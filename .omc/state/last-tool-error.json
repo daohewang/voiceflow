@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"swift build 2>&1\"}",
-  "error": "Exit code 1\nBuilding for debugging...\n[0/4] Write sources\n[1/4] Write swift-version--58304C5D6DBC2206.txt\n[3/6] Emitting module VoiceFlow\n[4/6] Compiling VoiceFlow HotkeyMonitor.swift\n/Users/swordsmanye/Downloads/1-Projects/AiMaker/ai-auto-run/NoTyping/VoiceFlow/Core/HotkeyMonitor.swift:162:40: error: cannot convert value of type 'CGEventTapProxy' (aka 'OpaquePointer') to expected argument type 'CFMachPort'\n160 |             // macOS 超时后会自动 disable tap，必须在此重新启用，否则之后所有按键都失效\n161 |             if t...",
-  "timestamp": "2026-03-05T09:27:26.732Z",
-  "retry_count": 2
-}
