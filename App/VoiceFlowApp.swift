@@ -58,9 +58,7 @@ struct VoiceFlowApp: App {
                     print("[VoiceFlowApp] Start recording triggered")
                     AppState.shared.currentStatus = .recording
                     AppState.shared.startNewSession()
-                    // 显示录音指示器
-                    RecordingIndicatorManager.shared.show()
-                    // 启动完整录音流程
+                    // 启动完整录音流程（会自动显示录音指示器）
                     RecordingCoordinator.shared.startRecording()
                 }
             }
@@ -68,12 +66,8 @@ struct VoiceFlowApp: App {
             HotkeyMonitor.shared.onStopRecording = {
                 Task { @MainActor in
                     print("[VoiceFlowApp] Stop recording triggered")
-                    // 隐藏录音指示器
-                    RecordingIndicatorManager.shared.hide()
-                    if AppState.shared.currentStatus == .recording {
-                        AppState.shared.currentStatus = .processing
-                    }
                     // 停止录音并触发 LLM 润色 + 注入
+                    // 指示器状态由 RecordingCoordinator 管理
                     RecordingCoordinator.shared.stopRecording()
                 }
             }

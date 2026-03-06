@@ -121,7 +121,14 @@ final class RecordingCoordinator {
             asr?.sendAudioData(data)
         }
 
-        // 5. 启动 ASR 连接 + 音频引擎
+        // 4.1 连接音量回调 → 指示器
+        engine.onAudioLevel = { level in
+            Task { @MainActor in
+                RecordingIndicatorManager.shared.updateAudioLevel(level)
+            }
+        }
+
+        // 5. 启动 ASR 连接 + 音频引擎 + 显示指示器
         Task {
             do {
                 try await asr.connect()
@@ -129,6 +136,9 @@ final class RecordingCoordinator {
 
                 try engine.startRecording()
                 print("[RecordingCoordinator] AudioEngine started")
+
+                // 显示录音指示器
+                RecordingIndicatorManager.shared.showRecording()
             } catch {
                 print("[RecordingCoordinator] Start failed: \(error.localizedDescription)")
                 AppState.shared.setError("启动录音失败: \(error.localizedDescription)")
@@ -150,6 +160,9 @@ final class RecordingCoordinator {
         // 1. 立即停止音频采集
         audioEngine?.stopRecording()
         isRecording = false
+
+        // 1.1 切换到处理状态 UI
+        RecordingIndicatorManager.shared.showProcessing()
 
         // 2. commit → 等服务器返回最后一段 committed_transcript → 断连 → 处理文本
         let asr = asrClient
@@ -175,6 +188,7 @@ final class RecordingCoordinator {
             guard !finalText.isEmpty else {
                 print("[RecordingCoordinator] No ASR text, returning to idle")
                 AppState.shared.currentStatus = .idle
+                RecordingIndicatorManager.shared.hide()
                 self.cleanup()
                 return
             }
@@ -237,6 +251,7 @@ final class RecordingCoordinator {
         appState.asrText = ""
         appState.llmText = ""
 
+        RecordingIndicatorManager.shared.hide()
         cleanup()
     }
 
@@ -258,6 +273,9 @@ final class RecordingCoordinator {
                 guard AppState.shared.isValidSession(sessionId) else { return }
                 print("[RecordingCoordinator] Text injected successfully")
                 AppState.shared.currentStatus = .idle
+
+                // 隐藏指示器
+                RecordingIndicatorManager.shared.hide()
 
                 // 1.5 秒后清除显示文本
                 try? await Task.sleep(nanoseconds: 1_500_000_000)

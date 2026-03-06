@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 AVFoundation 的 AVAudioEngine/AVAudioConverter
- * [OUTPUT]: 对外提供 AudioEngine 类，音频采集 + 格式转换 + 回调
- * [POS]: VoiceFlow/Core 的音频层，被 ASRClient 消费
+ * [OUTPUT]: 对外提供 AudioEngine 类，音频采集 + 格式转换 + 音量级别回调
+ * [POS]: VoiceFlow/Core 的音频层，被 ASRClient 消费，音量数据供给 RecordingIndicator
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
@@ -43,8 +43,14 @@ final class AudioEngine: @unchecked Sendable {
     /// 音频数据回调
     var onAudioData: ((Data) -> Void)?
 
+    /// 音量级别回调 (0.0 ~ 1.0)
+    var onAudioLevel: ((Float) -> Void)?
+
     /// 是否正在录音
     private(set) var isRecording = false
+
+    /// 当前音量级别
+    private(set) var currentLevel: Float = 0.0
 
     // ----------------------------------------
     // MARK: - Buffer Management
@@ -169,7 +175,20 @@ final class AudioEngine: @unchecked Sendable {
 
         // 提取 PCM 数据
         guard let channelData = outputBuffer.int16ChannelData else { return }
-        let byteCount = Int(outputBuffer.frameLength) * 2  // 16-bit = 2 bytes
+        let frameCount = Int(outputBuffer.frameLength)
+        let byteCount = frameCount * 2  // 16-bit = 2 bytes
+
+        // 计算音量级别 (RMS)
+        var sumSquares: Float = 0
+        for i in 0..<frameCount {
+            let sample = Float(channelData[0][i])
+            sumSquares += sample * sample
+        }
+        let rms = sqrt(sumSquares / Float(frameCount))
+        // 归一化到 0~1 (Int16 范围是 -32768~32767)
+        let normalizedLevel = min(1.0, rms / 32768.0)
+        currentLevel = normalizedLevel
+        onAudioLevel?(normalizedLevel)
 
         // 复制数据 (线程安全)
         let data = Data(bytes: channelData[0], count: byteCount)
