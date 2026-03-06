@@ -6,6 +6,8 @@
  */
 
 import SwiftUI
+import ApplicationServices
+import AppKit
 
 // ========================================
 // MARK: - Settings View
@@ -328,6 +330,7 @@ struct SettingsView: View {
     // ----------------------------------------
 
     @State private var isRecordingHotkey: Bool = false
+    @State private var hasAccessibilityPermission: Bool = false
 
     private var hotkeyContent: some View {
         VStack(spacing: 20) {
@@ -341,6 +344,39 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)
+
+            // 权限状态警告
+            if !hasAccessibilityPermission {
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("缺少辅助功能权限")
+                            .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    }
+
+                    Text("没有辅助功能权限，快捷键无法拦截按键事件。\n按键会先输入到当前应用，然后才触发动作。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    Button("打开系统设置") {
+                        // 打开系统设置的辅助功能面板
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.orange.opacity(0.1))
+                )
+                .padding(.horizontal)
+            }
 
             Divider()
 
@@ -394,6 +430,13 @@ struct SettingsView: View {
             .padding(.horizontal)
         }
         .padding(.vertical)
+        .onAppear {
+            checkAccessibilityPermission()
+        }
+    }
+
+    private func checkAccessibilityPermission() {
+        hasAccessibilityPermission = AXIsProcessTrusted()
     }
 
     // ----------------------------------------

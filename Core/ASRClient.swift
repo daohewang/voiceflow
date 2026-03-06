@@ -44,6 +44,7 @@ final class ASRClient: @unchecked Sendable {
     private(set) var isConnected = false
     private var isReconnecting = false
 
+
     // ----------------------------------------
     // MARK: - Callbacks
     // ----------------------------------------
@@ -150,24 +151,6 @@ final class ASRClient: @unchecked Sendable {
     // MARK: - Audio Streaming
     // ----------------------------------------
 
-    /// 提交当前缓冲区，强制服务器输出最后一段 committed_transcript
-    func commit() {
-        guard isConnected, let task = webSocketTask else { return }
-
-        let payload: [String: Any] = [
-            "message_type": "input_audio_chunk",
-            "audio_base_64": "",
-            "commit": true,
-            "sample_rate": 16000
-        ]
-
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload),
-              let jsonString = String(data: jsonData, encoding: .utf8) else { return }
-
-        task.send(.string(jsonString)) { _ in }
-        print("[ASRClient] Commit sent")
-    }
-
     /// 发送音频数据 (必须用 JSON + base64，不能直接发 binary)
     func sendAudioData(_ data: Data) {
         guard isConnected, let task = webSocketTask else { return }
@@ -185,6 +168,29 @@ final class ASRClient: @unchecked Sendable {
         task.send(.string(jsonString)) { error in
             if let error = error {
                 print("[ASRClient] Send error: \(error)")
+            }
+        }
+    }
+
+    /// 发送 commit 信号，强制服务器输出缓冲区里的最后一段语音
+    func commit() {
+        guard isConnected, let task = webSocketTask else { return }
+
+        let payload: [String: Any] = [
+            "message_type": "input_audio_chunk",
+            "audio_base_64": "",
+            "commit": true,
+            "sample_rate": 16000
+        ]
+
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload),
+              let jsonString = String(data: jsonData, encoding: .utf8) else { return }
+
+        task.send(.string(jsonString)) { error in
+            if let error = error {
+                print("[ASRClient] Commit error: \(error)")
+            } else {
+                print("[ASRClient] Commit signal sent")
             }
         }
     }

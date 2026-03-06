@@ -162,6 +162,7 @@ final class RecordingCoordinator {
         isRecording = false
 
         // 1.1 切换到处理状态 UI
+        AppState.shared.currentStatus = .processing
         RecordingIndicatorManager.shared.showProcessing()
 
         // 2. commit → 等服务器返回最后一段 committed_transcript → 断连 → 处理文本
@@ -193,7 +194,12 @@ final class RecordingCoordinator {
                 return
             }
 
-            guard AppState.shared.isValidSession(sessionId) else { return }
+            guard AppState.shared.isValidSession(sessionId) else {
+                print("[RecordingCoordinator] Invalid session, aborting")
+                RecordingIndicatorManager.shared.hide()
+                self.cleanup()
+                return
+            }
 
             // 无 OpenRouter Key → 直接注入原始文本
             guard let openRouterKey = self.getAPIKey(.openRouter) else {
@@ -203,7 +209,6 @@ final class RecordingCoordinator {
             }
 
             // 有 LLM Key → 润色后注入
-            AppState.shared.currentStatus = .processing
             let llmClient = LLMClient.shared
             let styleId = AppState.shared.selectedStyleId
 
@@ -226,12 +231,24 @@ final class RecordingCoordinator {
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     guard AppState.shared.isValidSession(sessionId) else { return }
-                    print("[RecordingCoordinator] LLM error, injecting raw ASR text")
+                    print("[RecordingCoordinator] LLM error: \(error.localizedDescription), injecting raw ASR text")
                     self.injectText(finalText, sessionId: sessionId)
                 }
             }
 
+            print("[RecordingCoordinator] Starting LLM polish for: '\(finalText)'")
             llmClient.polishText(finalText, style: styleId, apiKey: openRouterKey)
+
+            // 35秒超时保护（LLM超时30秒 + 5秒缓冲）
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 35_000_000_000)
+                guard AppState.shared.isValidSession(sessionId) else { return }
+                if AppState.shared.currentStatus == .processing {
+                    print("[RecordingCoordinator] LLM timeout, injecting raw ASR text")
+                    llmClient.cancel()
+                    self?.injectText(finalText, sessionId: sessionId)
+                }
+            }
         }
     }
 
@@ -262,7 +279,25 @@ final class RecordingCoordinator {
     /// 注入文本到当前输入框
     private func injectText(_ text: String, sessionId: UUID) {
         let appState = AppState.shared
-        guard appState.isValidSession(sessionId) else { return }
+        guard appState.isValidSession(sessionId) else {
+            print("[RecordingCoordinator] Invalid session, skipping inject")
+            return
+        }
+
+        print("[RecordingCoordinator] Injecting text: '\(text)'")
+
+        // 主动请求辅助功能权限（会弹出系统对话框或打开系统设置）
+        let granted = PermissionManager.shared.requestAccessibilityPermission()
+        print("[RecordingCoordinator] Accessibility permission result: \(granted)")
+
+        guard granted else {
+            print("[RecordingCoordinator] Accessibility permission not granted, opening system preferences")
+            // 打开系统设置让用户授权
+            PermissionManager.shared.openAccessibilityPreferences()
+            RecordingIndicatorManager.shared.hide()
+            appState.setError("请在系统设置中添加 VoiceFlow 到辅助功能列表，然后重试录音。")
+            return
+        }
 
         appState.currentStatus = .injecting
 
@@ -290,6 +325,8 @@ final class RecordingCoordinator {
             Task { @MainActor in
                 guard AppState.shared.isValidSession(sessionId) else { return }
                 print("[RecordingCoordinator] Inject error: \(error.localizedDescription)")
+                // 隐藏指示器
+                RecordingIndicatorManager.shared.hide()
                 AppState.shared.setError("文本注入失败: \(error.localizedDescription)")
             }
         }

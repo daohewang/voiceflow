@@ -90,26 +90,36 @@ final class HotkeyMonitor {
     func startMonitoring() -> Bool {
         guard !isMonitoring else { return true }
 
-        // 检查辅助功能权限
+        // 检查辅助功能权限（不弹出对话框，只检测）
         let trusted = AXIsProcessTrusted()
         print("[HotkeyMonitor] Accessibility trusted: \(trusted)")
 
         if !trusted {
-            // 弹出权限请求对话框
-            _ = PermissionManager.shared.requestAccessibilityPermission()
-            print("[HotkeyMonitor] Accessibility permission not granted, requesting...")
+            // 权限未授予，使用 NSEvent 备用方案（应用内快捷键仍然可用，但无法拦截按键）
+            print("[HotkeyMonitor] ⚠️ No accessibility permission - using NSEvent fallback (CANNOT intercept keys)")
+            print("[HotkeyMonitor] ⚠️ NSEvent mode will NOT prevent key from reaching other apps!")
+            setupNSEventMonitor()
+            isMonitoring = true
+
+            // 延迟提示用户去系统设置授权（不阻塞启动）
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2秒后提示
+                let stillNotTrusted = AXIsProcessTrusted()
+                if !stillNotTrusted {
+                    AppState.shared.setError("⚠️ 快捷键无法拦截按键！\n\n请授予辅助功能权限：\n系统设置 > 隐私与安全性 > 辅助功能 > 添加 VoiceFlow\n\n没有此权限，快捷键会先输入字符再触发动作。")
+                }
+            }
+            return true
         }
 
         // 尝试方案 1: CGEventTap (最可靠，但需要权限)
-        if trusted {
-            let tapSuccess = setupCGEventTap()
-            if tapSuccess {
-                isMonitoring = true
-                print("[HotkeyMonitor] Started monitoring via CGEventTap")
-                return true
-            }
-            print("[HotkeyMonitor] CGEventTap failed, falling back to NSEvent monitor")
+        let tapSuccess = setupCGEventTap()
+        if tapSuccess {
+            isMonitoring = true
+            print("[HotkeyMonitor] Started monitoring via CGEventTap")
+            return true
         }
+        print("[HotkeyMonitor] CGEventTap failed, falling back to NSEvent monitor")
 
         // 方案 2: NSEvent 全局监听 (权限要求较低)
         setupNSEventMonitor()
@@ -156,6 +166,7 @@ final class HotkeyMonitor {
     // ----------------------------------------
 
     private func setupCGEventTap() -> Bool {
+        print("[HotkeyMonitor] Setting up CGEventTap...")
         let eventMask = (1 << CGEventType.keyDown.rawValue) |
                         (1 << CGEventType.keyUp.rawValue) |
                         (1 << CGEventType.flagsChanged.rawValue)
@@ -173,17 +184,24 @@ final class HotkeyMonitor {
             return monitor.handleCGEvent(type: type, event: event)
         }
 
-        guard let tap = CGEvent.tapCreate(
+        // 尝试创建 EventTap
+        let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: CGEventMask(eventMask),
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
-            print("[HotkeyMonitor] Failed to create CGEventTap")
+        )
+
+        guard let tap = tap else {
+            // CGEventTap 创建失败通常意味着没有辅助功能权限
+            print("[HotkeyMonitor] ❌ CGEventTap creation FAILED - likely missing accessibility permission")
+            print("[HotkeyMonitor] ❌ Without CGEventTap, keys CANNOT be intercepted!")
             return false
         }
+
+        print("[HotkeyMonitor] ✅ CGEventTap created successfully - keys CAN be intercepted")
 
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
 

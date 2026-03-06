@@ -1,20 +1,22 @@
 /**
- * [INPUT]: 依赖 Security.framework 的 SecItem API
- * [OUTPUT]: 对外提供 KeychainManager 单例，安全存取 API Key
- * [POS]: VoiceFlow/Core 的安全层，被 AppState 和 SettingsView 消费
+ * [INPUT]: 依赖 Foundation (UserDefaults)
+ * [OUTPUT]: 对外提供 KeychainManager 单例，存取 API Key
+ * [POS]: VoiceFlow/Core 的存储层，被 AppState 和 SettingsView 消费
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ *
+ * Note: 使用 UserDefaults 而非 Keychain，避免每次构建签名变化后需要重新授权密码
  */
 
 import Foundation
-import Security
 
 // ========================================
-// MARK: - Keychain Manager
+// MARK: - Keychain Manager (UserDefaults-based)
 // ========================================
 
-/// Keychain 安全存储管理器
-/// 职责：API Key 的加密持久化，读写原子性保证
-final class KeychainManager: Sendable {
+/// API Key 存储管理器
+/// 职责：API Key 的持久化存储
+@MainActor
+final class KeychainManager {
 
     // ----------------------------------------
     // MARK: - Singleton
@@ -22,13 +24,10 @@ final class KeychainManager: Sendable {
 
     static let shared = KeychainManager()
 
+    private let defaults = UserDefaults.standard
+    private let prefix = "com.voiceflow."
+
     private init() {}
-
-    // ----------------------------------------
-    // MARK: - Service Identifier
-    // ----------------------------------------
-
-    private let service = "com.voiceflow.app"
 
     // ----------------------------------------
     // MARK: - Keys
@@ -45,123 +44,57 @@ final class KeychainManager: Sendable {
 
     /// 存储 API Key
     func set(_ value: String, for key: Key) throws {
-        // 先尝试删除旧值（避免重复插入错误）
-        try? delete(key)
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key.rawValue,
-            kSecValueData as String: value.data(using: .utf8)!
-        ]
-
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw KeychainError.writeFailed(status)
-        }
+        defaults.set(value, forKey: prefix + key.rawValue)
+        defaults.synchronize()
     }
 
     /// 读取 API Key
     func get(_ key: Key) throws -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key.rawValue,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess else {
-            if status == errSecItemNotFound {
-                return nil
-            }
-            throw KeychainError.readFailed(status)
-        }
-
-        guard let data = result as? Data,
-              let value = String(data: data, encoding: .utf8) else {
-            throw KeychainError.invalidData
-        }
-
-        return value
+        let value = defaults.string(forKey: prefix + key.rawValue)
+        return value?.isEmpty == false ? value : nil
     }
 
     /// 删除 API Key
     func delete(_ key: Key) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key.rawValue
-        ]
-
-        let status = SecItemDelete(query as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw KeychainError.deleteFailed(status)
-        }
+        defaults.removeObject(forKey: prefix + key.rawValue)
+        defaults.synchronize()
     }
 
-    // ----------------------------------------
-    // MARK: - Convenience API
-    // ----------------------------------------
-
-    /// 安全更新 API Key（存在则更新，不存在则创建）
+    /// 更新 API Key
     func update(_ value: String, for key: Key) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key.rawValue
-        ]
-
-        let attributes: [String: Any] = [
-            kSecValueData as String: value.data(using: .utf8)!
-        ]
-
-        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-
-        if status == errSecItemNotFound {
-            // 不存在，创建新条目
-            try set(value, for: key)
-        } else if status != errSecSuccess {
-            throw KeychainError.updateFailed(status)
-        }
+        try set(value, for: key)
     }
 
     /// 检查 Key 是否存在
     func exists(_ key: Key) -> Bool {
-        do {
-            return try get(key) != nil
-        } catch {
-            return false
-        }
+        guard let value = defaults.string(forKey: prefix + key.rawValue) else { return false }
+        return !value.isEmpty
     }
 }
 
 // ========================================
-// MARK: - Error Types
+// MARK: - Error Types (kept for compatibility)
 // ========================================
 
 enum KeychainError: LocalizedError, Sendable {
-    case writeFailed(OSStatus)
-    case readFailed(OSStatus)
-    case deleteFailed(OSStatus)
-    case updateFailed(OSStatus)
+    case writeFailed(Int)
+    case readFailed(Int)
+    case deleteFailed(Int)
+    case updateFailed(Int)
     case invalidData
 
     var errorDescription: String? {
         switch self {
         case .writeFailed(let status):
-            return "Keychain write failed with status: \(status)"
+            return "Storage write failed with status: \(status)"
         case .readFailed(let status):
-            return "Keychain read failed with status: \(status)"
+            return "Storage read failed with status: \(status)"
         case .deleteFailed(let status):
-            return "Keychain delete failed with status: \(status)"
+            return "Storage delete failed with status: \(status)"
         case .updateFailed(let status):
-            return "Keychain update failed with status: \(status)"
+            return "Storage update failed with status: \(status)"
         case .invalidData:
-            return "Keychain data is invalid or corrupted"
+            return "Storage data is invalid"
         }
     }
 }

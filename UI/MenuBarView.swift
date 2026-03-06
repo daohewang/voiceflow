@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 SwiftUI 框架，依赖 AppState 全局状态
  * [OUTPUT]: 对外提供 MenuBarView 视图组件
- * [POS]: VoiceFlow 的菜单栏主界面，展示四状态 UI (Idle/Recording/Processing/Error)
+ * [POS]: VoiceFlow 的菜单栏下拉界面，提供快捷操作入口
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
@@ -13,295 +13,321 @@ import SwiftUI
 
 struct MenuBarView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.openWindow) private var openWindow
-
-    // ----------------------------------------
-    // MARK: - Body
-    // ----------------------------------------
 
     var body: some View {
         VStack(spacing: 0) {
-            // ----------------------------------------
-            // Header
-            // ----------------------------------------
-            headerView
+            // 主内容区
+            mainContent
 
             Divider()
+                .padding(.horizontal, 12)
 
-            // ----------------------------------------
-            // Content - State Machine
-            // ----------------------------------------
-            contentView
-                .frame(minHeight: 120, maxHeight: 300)
-
-            Divider()
-
-            // ----------------------------------------
-            // Footer
-            // ----------------------------------------
-            footerView
+            // 底部操作区
+            footerSection
         }
-        .frame(width: 320)
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    // ----------------------------------------
-    // MARK: - Header
-    // ----------------------------------------
-
-    private var headerView: some View {
-        HStack {
-            statusIcon
-            Text(statusTitle)
-                .font(.system(.headline, design: .rounded))
-            Spacer()
-            statusBadge
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-
-    private var statusIcon: some View {
-        Group {
-            switch appState.currentStatus {
-            case .idle:
-                Image(systemName: "waveform")
-                    .foregroundStyle(.secondary)
-            case .recording:
-                Image(systemName: "waveform")
-                    .foregroundStyle(.red)
-                    .symbolEffect(.pulse)
-            case .processing:
-                ProgressView()
-                    .scaleEffect(0.7)
-            case .injecting:
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            case .error:
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-            }
-        }
-        .frame(width: 24)
-    }
-
-    private var statusBadge: some View {
-        Group {
-            switch appState.currentStatus {
-            case .idle:
-                EmptyView()
-            case .recording:
-                Text("REC")
-                    .font(.system(.caption2, design: .monospaced))
-                    .fontWeight(.bold)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.red)
-                    .clipShape(Capsule())
-            case .processing:
-                Text("处理中")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            case .injecting:
-                Text("完成")
-                    .font(.caption2)
-                    .foregroundStyle(.green)
-            case .error:
-                Text("错误")
-                    .font(.caption2)
-                    .foregroundStyle(.red)
-            }
-        }
-    }
-
-    private var statusTitle: String {
-        switch appState.currentStatus {
-        case .idle:
-            return "VoiceFlow"
-        case .recording:
-            return "正在录音..."
-        case .processing:
-            return "正在处理..."
-        case .injecting:
-            return "已注入"
-        case .error(let message):
-            return message
-        }
-    }
-
-    // ----------------------------------------
-    // MARK: - Content
-    // ----------------------------------------
-
-    @ViewBuilder
-    private var contentView: some View {
-        switch appState.currentStatus {
-        case .idle:
-            idleContent
-        case .recording:
-            recordingContent
-        case .processing:
-            processingContent
-        case .injecting:
-            injectingContent
-        case .error:
-            errorContent
-        }
-    }
-
-    private var idleContent: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "waveform.circle")
-                .font(.system(size: 48))
-                .foregroundStyle(.tertiary)
-            Text("按下快捷键开始录音")
-                .font(.system(.body, design: .rounded))
-                .foregroundStyle(.secondary)
-            Text(appState.hotkeyConfig.displayString)
-                .font(.system(.callout, design: .monospaced))
-                .foregroundStyle(.tertiary)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var recordingContent: some View {
-        VStack(spacing: 8) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(appState.asrText)
-                            .font(.system(.body, design: .rounded))
-                            .textSelection(.enabled)
-                            .id("asrText")
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                }
-                .onChange(of: appState.asrText) { _, newValue in
-                    withAnimation(.easeOut(duration: 0.1)) {
-                        proxy.scrollTo("asrText", anchor: .bottom)
-                    }
-                }
-            }
-        }
-    }
-
-    private var processingContent: some View {
-        VStack(spacing: 12) {
-            // ASR 原文 (上部分)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("原文")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                Text(appState.asrText)
-                    .font(.system(.callout, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal)
-
-            Divider()
-
-            // LLM 润色结果 (下部分)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("润色结果")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                    Spacer()
-                    ProgressView()
-                        .scaleEffect(0.6)
-                }
-                Text(appState.llmText.isEmpty ? "生成中..." : appState.llmText)
-                    .font(.system(.body, design: .rounded))
-                    .foregroundStyle(appState.llmText.isEmpty ? .tertiary : .primary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal)
-        }
+        .frame(width: 280)
         .padding(.vertical, 8)
     }
 
-    private var injectingContent: some View {
+    // ========================================
+    // MARK: - Main Content
+    // ========================================
+
+    @ViewBuilder
+    private var mainContent: some View {
+        switch appState.currentStatus {
+        case .idle:
+            idleView
+        case .recording:
+            recordingView
+        case .processing:
+            processingView
+        case .injecting:
+            injectedView
+        case .error:
+            errorView
+        }
+    }
+
+    // ----------------------------------------
+    // Idle State
+    // ----------------------------------------
+
+    private var idleView: some View {
+        VStack(spacing: 16) {
+            // Logo & Title
+            VStack(spacing: 8) {
+                Image(systemName: "waveform.circle.fill")
+                    .font(.system(size: 44))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(hex: "ec4899"), Color(hex: "8b5cf6")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+
+                Text("VoiceFlow")
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+
+                Text("语音输入，智能润色")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 12)
+
+            // 快捷键提示
+            HStack(spacing: 6) {
+                Text("按下")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.tertiary)
+
+                Text(appState.hotkeyConfig.displayString)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(Color.accentColor)
+                    )
+
+                Text("开始录音")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer(minLength: 12)
+        }
+    }
+
+    // ----------------------------------------
+    // Recording State
+    // ----------------------------------------
+
+    private var recordingView: some View {
         VStack(spacing: 12) {
-            // 成功动画
+            // 状态指示
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(.red)
+                    .frame(width: 8, height: 8)
+                    .symbolEffect(.pulse)
+
+                Text("正在录音...")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+
+                Spacer()
+
+                Text("再次按下快捷键结束")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
+            // 实时文本
+            if !appState.asrText.isEmpty {
+                ScrollView {
+                    Text(appState.asrText)
+                        .font(.system(size: 13, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                }
+                .frame(maxHeight: 120)
+            } else {
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("等待语音输入...")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(height: 80)
+            }
+
+            Spacer(minLength: 8)
+        }
+    }
+
+    // ----------------------------------------
+    // Processing State
+    // ----------------------------------------
+
+    private var processingView: some View {
+        VStack(spacing: 12) {
+            // 状态指示
+            HStack(spacing: 8) {
+                ProgressView()
+                    .scaleEffect(0.7)
+
+                Text("正在处理...")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
+            // 原文
+            if !appState.asrText.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("原文")
+                        .font(.system(size: 10, design: .rounded))
+                        .foregroundStyle(.tertiary)
+
+                    Text(appState.asrText)
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+            }
+
+            // 润色结果
+            VStack(alignment: .leading, spacing: 4) {
+                Text("润色结果")
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundStyle(.tertiary)
+
+                if appState.llmText.isEmpty {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                        Text("生成中...")
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                    }
+                } else {
+                    Text(appState.llmText)
+                        .font(.system(size: 13, design: .rounded))
+                        .foregroundStyle(.primary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+
+            Spacer(minLength: 8)
+        }
+    }
+
+    // ----------------------------------------
+    // Injected State
+    // ----------------------------------------
+
+    private var injectedView: some View {
+        VStack(spacing: 12) {
+            Spacer()
+
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 32))
+                .font(.system(size: 36))
                 .foregroundStyle(.green)
 
             Text("文本已注入")
-                .font(.system(.headline, design: .rounded))
+                .font(.system(size: 14, weight: .medium, design: .rounded))
 
             if !appState.llmText.isEmpty {
                 Text(appState.llmText)
-                    .font(.system(.callout, design: .rounded))
+                    .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
-                    .lineLimit(5)
-                    .padding(.horizontal)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+
+            Spacer()
+        }
+        .onAppear {
+            // 2秒后自动回到 idle
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if appState.currentStatus == .injecting {
+                    appState.currentStatus = .idle
+                    appState.asrText = ""
+                    appState.llmText = ""
+                }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
     }
 
-    private var errorContent: some View {
+    // ----------------------------------------
+    // Error State
+    // ----------------------------------------
+
+    private var errorView: some View {
         VStack(spacing: 12) {
+            Spacer()
+
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 32))
                 .foregroundStyle(.red)
 
             Text("出错了")
-                .font(.system(.headline, design: .rounded))
+                .font(.system(size: 14, weight: .medium, design: .rounded))
 
             if let errorMessage = appState.errorMessage {
                 Text(errorMessage)
-                    .font(.system(.callout, design: .rounded))
+                    .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal)
+                    .padding(.horizontal, 24)
             }
 
-            Button("重试") {
+            Button {
                 appState.clearError()
+            } label: {
+                Text("重试")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+
+            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
     }
 
-    // ----------------------------------------
-    // MARK: - Footer
-    // ----------------------------------------
+    // ========================================
+    // MARK: - Footer Section
+    // ========================================
 
-    private var footerView: some View {
-        HStack {
-            // Settings Button
+    private var footerSection: some View {
+        HStack(spacing: 0) {
+            // 设置按钮
             Button {
                 SettingsWindowManager.shared.showSettings()
             } label: {
-                Image(systemName: "gearshape")
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 12))
+                    Text("设置")
+                        .font(.system(size: 12, design: .rounded))
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("设置")
 
             Spacer()
 
-            // Quit Button - ⌘Q 在 MenuBarExtra 中无效，改用 NSApp menu 注册
-            Button("退出") {
+            // 退出按钮
+            Button {
                 NSApplication.shared.terminate(nil)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "power")
+                        .font(.system(size: 11))
+                    Text("退出")
+                        .font(.system(size: 12, design: .rounded))
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
     }
 }
 
@@ -326,14 +352,7 @@ struct MenuBarView: View {
     let state = AppState()
     state.currentStatus = .processing
     state.asrText = "原始录音文本"
-    state.llmText = "润色后的文本内容"
-    return MenuBarView()
-        .environment(state)
-}
-
-#Preview("Error") {
-    let state = AppState()
-    state.setError("无法连接到服务器")
+    state.llmText = ""
     return MenuBarView()
         .environment(state)
 }
