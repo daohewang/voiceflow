@@ -58,6 +58,12 @@ final class HotkeyMonitor {
     private var globalMonitor: Any?
     private var localMonitor: Any?
 
+    /// 是否处于 NSEvent 备用模式（权限不足时降级）
+    private var isUsingFallback: Bool = false
+
+    /// 权限轮询任务（备用模式下等待用户授权）
+    private var permissionCheckTask: Task<Void, Never>?
+
     /// 录音状态
     private var isRecording: Bool = false
 
@@ -90,23 +96,25 @@ final class HotkeyMonitor {
     func startMonitoring() -> Bool {
         guard !isMonitoring else { return true }
 
-        // 检查辅助功能权限（不弹出对话框，只检测）
+        // 检查辅助功能权限
         let trusted = AXIsProcessTrusted()
         print("[HotkeyMonitor] Accessibility trusted: \(trusted)")
 
         if !trusted {
-            // 权限未授予，使用 NSEvent 备用方案（应用内快捷键仍然可用，但无法拦截按键）
-            print("[HotkeyMonitor] ⚠️ No accessibility permission - using NSEvent fallback (CANNOT intercept keys)")
-            print("[HotkeyMonitor] ⚠️ NSEvent mode will NOT prevent key from reaching other apps!")
+            // 权限未授予，使用 NSEvent 备用方案
+            print("[HotkeyMonitor] ⚠️ No accessibility permission - using NSEvent fallback")
+            isUsingFallback = true
             setupNSEventMonitor()
             isMonitoring = true
 
-            // 延迟提示用户去系统设置授权（不阻塞启动）
+            // 开始轮询权限，授权后自动升级到 CGEventTap（无需重启应用）
+            startPermissionPolling()
+
+            // 延迟提示用户授权
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2秒后提示
-                let stillNotTrusted = AXIsProcessTrusted()
-                if !stillNotTrusted {
-                    AppState.shared.setError("⚠️ 快捷键无法拦截按键！\n\n请授予辅助功能权限：\n系统设置 > 隐私与安全性 > 辅助功能 > 添加 VoiceFlow\n\n没有此权限，快捷键会先输入字符再触发动作。")
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if !AXIsProcessTrusted() {
+                    AppState.shared.setError("⚠️ 全局快捷键需要辅助功能权限！\n\n请前往：\n系统设置 > 隐私与安全性 > 辅助功能\n点击 + 添加 VoiceFlow\n\n授权后将自动生效，无需重启。")
                 }
             }
             return true
@@ -116,7 +124,7 @@ final class HotkeyMonitor {
         let tapSuccess = setupCGEventTap()
         if tapSuccess {
             isMonitoring = true
-            print("[HotkeyMonitor] Started monitoring via CGEventTap")
+            print("[HotkeyMonitor] ✅ Started monitoring via CGEventTap")
             return true
         }
         print("[HotkeyMonitor] CGEventTap failed, falling back to NSEvent monitor")
@@ -158,6 +166,9 @@ final class HotkeyMonitor {
         }
 
         isMonitoring = false
+        isUsingFallback = false
+        permissionCheckTask?.cancel()
+        permissionCheckTask = nil
         print("[HotkeyMonitor] Stopped monitoring")
     }
 
@@ -238,6 +249,26 @@ final class HotkeyMonitor {
                 self?.handleNSEvent(event)
             }
             return event // 不拦截
+        }
+    }
+
+    // ----------------------------------------
+    // MARK: - Permission Polling
+    // ----------------------------------------
+
+    /// 备用模式下轮询辅助功能权限，授权后自动升级到 CGEventTap
+    private func startPermissionPolling() {
+        permissionCheckTask?.cancel()
+        permissionCheckTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard let self = self, !Task.isCancelled else { return }
+                guard AXIsProcessTrusted() else { continue }
+                print("[HotkeyMonitor] ✅ Accessibility permission granted, upgrading to CGEventTap")
+                self.stopMonitoring()
+                self.startMonitoring()
+                return
+            }
         }
     }
 

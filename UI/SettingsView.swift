@@ -456,7 +456,7 @@ struct SettingsView: View {
             VStack(spacing: 4) {
                 Text("VoiceFlow")
                     .font(.system(.title, design: .rounded).weight(.bold))
-                Text("版本 1.0.0")
+                Text("版本 0.0.2")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

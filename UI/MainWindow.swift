@@ -203,79 +203,59 @@ struct MainWindow: View {
 
     private var homeView: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // 顶部欢迎区
-                welcomeSection
-                    .padding(.top, 24)
-                    .padding(.horizontal, 24)
-
-                // 统计卡片区
+            VStack(alignment: .leading, spacing: 12) {
+                welcomeSection.padding(.top, 20)
                 statsSection
-                    .padding(.horizontal, 24)
-
-                // 当前人设
                 currentRoleSection
-                    .padding(.horizontal, 24)
-
-                // 快捷键提示
-                hotkeyTip
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
+                recentInputsSection.padding(.bottom, 24)
             }
+            .padding(.horizontal, 20)
         }
     }
 
     private var welcomeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Hi! 按住 \(appState.hotkeyConfig.displayString)，开启语音输入")
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
-                        .foregroundColor(.textPrimary)
-                }
-
-                Spacer()
-
-                // 录音按钮
-                Button {
-                    toggleRecording()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: appState.currentStatus == .recording ? "stop.fill" : "mic.fill")
-                            .font(.system(size: 14, weight: .medium))
-                        Text(appState.currentStatus == .recording ? "停止" : "录音")
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(appState.currentStatus == .recording ? Color.red : Color.themePrimary)
-                    )
-                }
-                .buttonStyle(.plain)
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(welcomeTitle)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundColor(.textPrimary)
+                Text("按 \(appState.hotkeyConfig.displayString) 开始 · Esc 取消")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundColor(.textTertiary)
             }
 
-            if appState.currentStatus != .idle {
-                // 状态指示
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
+            Spacer()
 
-                    Text(statusMessage)
-                        .font(.system(size: 12, design: .rounded))
-                        .foregroundColor(.textSecondary)
+            Button { toggleRecording() } label: {
+                ZStack {
+                    Circle()
+                        .fill(appState.currentStatus == .recording ? Color.red : Color.themePrimary)
+                        .frame(width: 48, height: 48)
+                        .shadow(
+                            color: (appState.currentStatus == .recording ? Color.red : Color.themePrimary).opacity(0.35),
+                            radius: 8, x: 0, y: 4
+                        )
+                    Image(systemName: appState.currentStatus == .recording ? "stop.fill" : "mic.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
                 }
-                .padding(.top, 8)
             }
+            .buttonStyle(.plain)
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.cardBackground)
-                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-        )
+        .padding(.horizontal, 20)
+        .padding(.vertical, 18)
+        .background(Color.cardBackground)
+        .cornerRadius(14)
+    }
+
+    private var welcomeTitle: String {
+        switch appState.currentStatus {
+        case .idle:        return "语音输入"
+        case .recording:   return "正在录音..."
+        case .processing:  return "AI 润色中..."
+        case .injecting:   return "注入文本..."
+        case .error:       return "发生错误"
+        }
     }
 
     private var statusMessage: String {
@@ -289,99 +269,74 @@ struct MainWindow: View {
     }
 
     private var statsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("使用统计")
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundColor(.textSecondary)
-
-            HStack(spacing: 12) {
-                statCard(icon: "mic", title: "协作次数", value: "0")
-                statCard(icon: "waveform", title: "口述时间", value: "0 分钟")
-                statCard(icon: "doc.text", title: "口述字数", value: "0")
-                statCard(icon: "clock", title: "节省时间", value: "0 分钟")
-            }
+        HStack(spacing: 0) {
+            statItem(value: "\(UsageStats.shared.totalRecordings)", label: "录音次数")
+            statSeparator()
+            statItem(value: "\(UsageStats.shared.totalCharactersTyped)", label: "口述字数")
+            statSeparator()
+            statItem(value: UsageStats.shared.formattedTimeSaved, label: "节省时间")
         }
+        .padding(.vertical, 16)
+        .background(Color.cardBackground)
+        .cornerRadius(14)
     }
 
-    private func statCard(icon: String, title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 14))
-                    .foregroundColor(.themePrimary)
-
-                Text(title)
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundColor(.textSecondary)
-            }
-
+    private func statItem(value: String, label: String) -> some View {
+        VStack(spacing: 4) {
             Text(value)
                 .font(.system(size: 20, weight: .bold, design: .rounded))
                 .foregroundColor(.textPrimary)
+            Text(label)
+                .font(.system(size: 11, design: .rounded))
+                .foregroundColor(.textTertiary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.cardBackground)
-                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-        )
+        .frame(maxWidth: .infinity)
+    }
+
+    private func statSeparator() -> some View {
+        Rectangle()
+            .fill(Color.divider)
+            .frame(width: 1, height: 28)
     }
 
     private var currentRoleSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("当前人设")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundColor(.textSecondary)
+        let template = StyleTemplate.predefinedTemplates.first(where: { $0.id == appState.selectedStyleId })
+            ?? StyleTemplateStore.shared.customTemplates.first(where: { $0.id == appState.selectedStyleId })
 
-                Spacer()
-
-                Button {
-                    selectedTab = .roles
-                } label: {
-                    Text("更换")
-                        .font(.system(size: 12, design: .rounded))
-                        .foregroundColor(.themePrimary)
-                }
-                .buttonStyle(.plain)
-            }
-
-            if let template = StyleTemplate.predefinedTemplates.first(where: { $0.id == appState.selectedStyleId }) {
+        return Group {
+            if let template = template {
                 HStack(spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(roleColor(for: template.id).opacity(0.15))
-                            .frame(width: 40, height: 40)
-
+                            .fill(roleColor(for: template.id).opacity(0.12))
+                            .frame(width: 36, height: 36)
                         Text(String(template.name.prefix(1)))
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundColor(roleColor(for: template.id))
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(template.name)
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundColor(.textPrimary)
-
-                        Text(template.systemPrompt)
+                        Text("当前人设")
                             .font(.system(size: 11, design: .rounded))
                             .foregroundColor(.textTertiary)
-                            .lineLimit(1)
+                        Text(template.name)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundColor(.textPrimary)
                     }
 
                     Spacer()
 
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundColor(.themePrimary)
+                    Button { selectedTab = .roles } label: {
+                        Text("更换")
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundColor(.themePrimary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.cardBackground)
-                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-                )
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.cardBackground)
+                .cornerRadius(14)
             }
         }
     }
@@ -399,27 +354,242 @@ struct MainWindow: View {
     }
 
     // ----------------------------------------
+    // MARK: - Recent Inputs Section
+    // ----------------------------------------
+
+    @State private var copiedEntryId: UUID? = nil
+
+    private var recentInputsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // 节标题行
+            HStack {
+                Text("最近输入")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(.textTertiary)
+                Spacer()
+                if !appState.historyEntries.isEmpty {
+                    Button {
+                        let all = appState.historyEntries.prefix(10).map { $0.finalText }.joined(separator: "\n\n")
+                        copyToClipboard(all)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 11))
+                            Text("全部复制")
+                                .font(.system(size: 11, design: .rounded))
+                        }
+                        .foregroundColor(.themePrimary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 4)
+
+            if appState.historyEntries.isEmpty {
+                Text("语音输入后，文字将在此显示")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundColor(.textTertiary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 28)
+                    .background(Color.cardBackground)
+                    .cornerRadius(14)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(appState.historyEntries.prefix(10).enumerated()), id: \.element.id) { idx, entry in
+                        recentInputRow(entry: entry)
+                        if idx < min(appState.historyEntries.count, 10) - 1 {
+                            Divider().padding(.leading, 12)
+                        }
+                    }
+                }
+                .background(Color.cardBackground)
+                .cornerRadius(14)
+            }
+        }
+    }
+
+    private func recentInputRow(entry: AppState.HistoryEntry) -> some View {
+        HStack(spacing: 10) {
+            Text(entry.finalText)
+                .font(.system(size: 13, design: .rounded))
+                .foregroundColor(.textPrimary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                copyToClipboard(entry.finalText)
+                copiedEntryId = entry.id
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    if copiedEntryId == entry.id { copiedEntryId = nil }
+                }
+            } label: {
+                Image(systemName: copiedEntryId == entry.id ? "checkmark" : "doc.on.clipboard")
+                    .font(.system(size: 13))
+                    .foregroundColor(copiedEntryId == entry.id ? .themePrimary : .textTertiary)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    private func copyToClipboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    // ----------------------------------------
     // MARK: - Roles View
     // ----------------------------------------
+
+    @State private var showTemplateEditor = false
+    @State private var editingTemplate: StyleTemplate?
+    @State private var showAddTemplate = false
 
     private var rolesView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("人设模板")
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
-                    .foregroundColor(.textPrimary)
-                    .padding(.top, 24)
-                    .padding(.horizontal, 24)
+                // 标题栏
+                HStack {
+                    Text("人设模板")
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .foregroundColor(.textPrimary)
 
-                LazyVStack(spacing: 10) {
-                    ForEach(StyleTemplate.predefinedTemplates, id: \.id) { template in
-                        roleDetailCard(template: template)
+                    Spacer()
+
+                    Button {
+                        showAddTemplate = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill")
+                            Text("添加人设")
+                        }
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(.themePrimary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 24)
+                .padding(.horizontal, 24)
+
+                // 预设人设
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("预设人设")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(.textTertiary)
+                        .padding(.horizontal, 24)
+
+                    LazyVStack(spacing: 10) {
+                        ForEach(StyleTemplateStore.shared.predefinedTemplateList, id: \.id) { template in
+                            roleDetailCard(template: template)
+                        }
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
+
+                // 自定义人设
+                let customTemplates = StyleTemplateStore.shared.customTemplates
+                if !customTemplates.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("自定义人设")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundColor(.textTertiary)
+                            .padding(.horizontal, 24)
+
+                        LazyVStack(spacing: 10) {
+                            ForEach(customTemplates, id: \.id) { template in
+                                roleDetailCard(template: template, showEdit: true)
+                            }
+                        }
+                    }
+                }
+
+                Spacer().frame(height: 24)
             }
         }
+        .sheet(isPresented: $showAddTemplate) {
+            TemplateEditorView(template: nil) { newTemplate in
+                StyleTemplateStore.shared.addTemplate(newTemplate)
+            }
+        }
+        .sheet(item: $editingTemplate) { template in
+            TemplateEditorView(template: template) { updated in
+                StyleTemplateStore.shared.updateTemplate(updated)
+            }
+        }
+    }
+
+    private func roleDetailCard(template: StyleTemplate, showEdit: Bool = false) -> some View {
+        Button {
+            appState.selectedStyleId = template.id
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(roleColor(for: template.id).opacity(0.15))
+                        .frame(width: 48, height: 48)
+
+                    Text(String(template.name.prefix(1)))
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundColor(roleColor(for: template.id))
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(template.name)
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(.textPrimary)
+
+                        if template.isPredefined {
+                            Text("预设")
+                                .font(.system(size: 9, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(Color.textTertiary))
+                        }
+                    }
+
+                    Text(template.systemPrompt)
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundColor(.textSecondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                // 编辑按钮（仅自定义人设）
+                if showEdit {
+                    Button {
+                        editingTemplate = template
+                    } label: {
+                        Image(systemName: "pencil.circle")
+                            .font(.system(size: 18))
+                            .foregroundColor(.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 8)
+                }
+
+                if appState.selectedStyleId == template.id {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.themePrimary)
+                }
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.cardBackground)
+                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(appState.selectedStyleId == template.id ? Color.themePrimary : .clear, lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private func roleDetailCard(template: StyleTemplate) -> some View {
@@ -475,24 +645,74 @@ struct MainWindow: View {
     // ----------------------------------------
 
     private var historyView: some View {
+        Group {
+            if appState.historyEntries.isEmpty {
+                emptyHistoryPlaceholder
+            } else {
+                historyList
+            }
+        }
+    }
+
+    private var emptyHistoryPlaceholder: some View {
         VStack(spacing: 20) {
             Spacer()
-
             Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 48))
                 .foregroundColor(.textTertiary)
-
             Text("暂无历史记录")
                 .font(.system(size: 16, weight: .medium, design: .rounded))
                 .foregroundColor(.textSecondary)
-
             Text("开始录音后，您的历史记录将显示在这里")
                 .font(.system(size: 13, design: .rounded))
                 .foregroundColor(.textTertiary)
-
             Spacer()
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var historyList: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(appState.historyEntries) { entry in
+                    historyCard(entry: entry)
+                }
+            }
+            .padding(24)
+        }
+    }
+
+    private func historyCard(entry: AppState.HistoryEntry) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(entry.date, style: .relative)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundColor(.textTertiary)
+                Spacer()
+                Text("\(entry.durationSeconds) 秒")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundColor(.textTertiary)
+            }
+
+            Text(entry.finalText)
+                .font(.system(size: 13, design: .rounded))
+                .foregroundColor(.textPrimary)
+                .lineLimit(3)
+
+            if entry.asrText != entry.finalText {
+                Text("识别原文：\(entry.asrText)")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundColor(.textTertiary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.cardBackground)
+                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+        )
     }
 
     // ----------------------------------------
@@ -779,7 +999,7 @@ struct SettingsSheet: View {
                 .font(.system(size: 20, weight: .bold, design: .rounded))
                 .foregroundColor(.textPrimary)
 
-            Text("版本 1.0.0")
+            Text("版本 0.0.2")
                 .font(.system(size: 12, design: .rounded))
                 .foregroundColor(.textTertiary)
 

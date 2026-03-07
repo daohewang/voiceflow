@@ -1,32 +1,35 @@
 /**
- * [INPUT]: 依赖 SwiftData 框架
+ * [INPUT]: 依赖 Foundation 框架
  * [OUTPUT]: 对外提供 StyleTemplate 模型、预定义模板、StyleTemplateStore
  * [POS]: VoiceFlow 的风格模板系统，被 SettingsView 和 AppState 消费
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
 import Foundation
-import SwiftData
 
 // ========================================
 // MARK: - Style Template Model
 // ========================================
 
-@Model
-final class StyleTemplate {
+struct StyleTemplate: Identifiable, Codable, Equatable {
 
     // ----------------------------------------
     // MARK: - Properties
     // ----------------------------------------
 
-    var id: String
+    let id: String
     var name: String
     var systemPrompt: String
     var temperature: Double
     var maxTokens: Int
-    var isPredefined: Bool
-    var createdAt: Date
+    let isPredefined: Bool
+    let createdAt: Date
     var updatedAt: Date
+
+    // 用于 Codable 的可变时间戳
+    mutating func touch() {
+        updatedAt = Date()
+    }
 
     // ----------------------------------------
     // MARK: - Initialization
@@ -144,74 +147,87 @@ extension StyleTemplate {
 final class StyleTemplateStore {
 
     // ----------------------------------------
+    // MARK: - Singleton
+    // ----------------------------------------
+
+    static let shared = StyleTemplateStore()
+
+    // ----------------------------------------
     // MARK: - Properties
     // ----------------------------------------
 
-    private var modelContext: ModelContext?
+    private let defaults = UserDefaults.standard
+    private let customTemplatesKey = "com.voiceflow.customTemplates"
+
     private(set) var templates: [StyleTemplate] = []
 
     // ----------------------------------------
     // MARK: - Initialization
     // ----------------------------------------
 
-    func configure(with modelContext: ModelContext) {
-        self.modelContext = modelContext
-        fetchTemplates()
+    private init() {
+        loadTemplates()
     }
 
     // ----------------------------------------
     // MARK: - CRUD Operations
     // ----------------------------------------
 
-    func fetchTemplates() {
-        guard let modelContext else { return }
+    private func loadTemplates() {
+        // 加载自定义模板
+        var allTemplates: [StyleTemplate] = []
 
-        let descriptor = FetchDescriptor<StyleTemplate>(
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-        )
-
-        do {
-            templates = try modelContext.fetch(descriptor)
-        } catch {
-            print("Failed to fetch templates: \(error)")
-            templates = []
+        // 从 UserDefaults 加载自定义模板
+        if let data = defaults.data(forKey: customTemplatesKey),
+           let custom = try? JSONDecoder().decode([StyleTemplate].self, from: data) {
+            allTemplates.append(contentsOf: custom)
         }
+
+        // 添加预定义模板
+        allTemplates.append(contentsOf: Self.predefinedTemplates)
+
+        templates = allTemplates
     }
 
     func addTemplate(_ template: StyleTemplate) {
-        guard let modelContext else { return }
-        modelContext.insert(template)
-        saveAndRefresh()
+        // 保存到 UserDefaults
+        var customTemplates = loadCustomTemplates()
+        customTemplates.append(template)
+        saveCustomTemplates(customTemplates)
+
+        // 刷新内存
+        loadTemplates()
+        print("[StyleTemplateStore] Added template: \(template.name)")
     }
 
     func deleteTemplate(_ template: StyleTemplate) {
-        guard let modelContext else { return }
-        modelContext.delete(template)
-        saveAndRefresh()
+        guard !template.isPredefined else {
+            print("[StyleTemplateStore] Cannot delete predefined template")
+            return
+        }
+
+        var customTemplates = loadCustomTemplates()
+        customTemplates.removeAll { $0.id == template.id }
+        saveCustomTemplates(customTemplates)
+
+        loadTemplates()
+        print("[StyleTemplateStore] Deleted template: \(template.name)")
     }
 
     func updateTemplate(_ template: StyleTemplate) {
-        template.updatedAt = Date()
-        saveAndRefresh()
-    }
-
-    // ----------------------------------------
-    // MARK: - Seed Predefined Templates
-    // ----------------------------------------
-
-    func seedPredefinedTemplatesIfNeeded() {
-        guard let modelContext else { return }
-
-        // Check if predefined templates already exist
-        let existingPredefined = templates.filter { $0.isPredefined }
-        guard existingPredefined.isEmpty else { return }
-
-        // Insert predefined templates
-        for template in Self.predefinedTemplates {
-            modelContext.insert(template)
+        guard !template.isPredefined else {
+            print("[StyleTemplateStore] Cannot update predefined template")
+            return
         }
 
-        saveAndRefresh()
+        var customTemplates = loadCustomTemplates()
+        if let idx = customTemplates.firstIndex(where: { $0.id == template.id }) {
+            customTemplates[idx] = template
+        }
+        saveCustomTemplates(customTemplates)
+
+        loadTemplates()
+        print("[StyleTemplateStore] Updated template: \(template.name)")
     }
 
     // ----------------------------------------
@@ -234,35 +250,21 @@ final class StyleTemplateStore {
     // MARK: - Private Helpers
     // ----------------------------------------
 
-    private func saveAndRefresh() {
-        guard let modelContext else { return }
-        do {
-            try modelContext.save()
-            fetchTemplates()
-        } catch {
-            print("Failed to save: \(error)")
+    private func loadCustomTemplates() -> [StyleTemplate] {
+        guard let data = defaults.data(forKey: customTemplatesKey),
+              let templates = try? JSONDecoder().decode([StyleTemplate].self, from: data) else {
+            return []
         }
+        return templates
     }
 
-    // Predefined templates for seeding
+    private func saveCustomTemplates(_ templates: [StyleTemplate]) {
+        guard let data = try? JSONEncoder().encode(templates) else { return }
+        defaults.set(data, forKey: customTemplatesKey)
+    }
+
+    // Predefined templates for reference
     static var predefinedTemplates: [StyleTemplate] {
         StyleTemplate.predefinedTemplates
-    }
-}
-
-// ========================================
-// MARK: - SwiftData Container Config
-// ========================================
-
-extension ModelContainer {
-    static var voiceFlow: ModelContainer {
-        let schema = Schema([StyleTemplate.self])
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: configuration)
-        } catch {
-            fatalError("Failed to create ModelContainer: \(error)")
-        }
     }
 }

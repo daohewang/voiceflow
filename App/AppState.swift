@@ -86,6 +86,43 @@ class AppState {
     }
 
     // ----------------------------------------
+    // MARK: - History
+    // ----------------------------------------
+
+    struct HistoryEntry: Identifiable, Codable {
+        let id: UUID
+        let date: Date
+        let asrText: String      // ASR 识别原文
+        let finalText: String    // 最终注入文本（可能经 LLM 润色）
+        let durationSeconds: Int // 录音时长
+    }
+
+    private(set) var historyEntries: [HistoryEntry] = []
+
+    func addHistoryEntry(asrText: String, finalText: String, durationSeconds: Int) {
+        let entry = HistoryEntry(
+            id: UUID(),
+            date: Date(),
+            asrText: asrText,
+            finalText: finalText,
+            durationSeconds: durationSeconds
+        )
+        historyEntries.insert(entry, at: 0)
+        if historyEntries.count > 100 {
+            historyEntries = Array(historyEntries.prefix(100))
+        }
+        if let data = try? JSONEncoder().encode(historyEntries) {
+            UserDefaults.standard.set(data, forKey: "historyEntries")
+        }
+    }
+
+    private func loadHistory() {
+        guard let data = UserDefaults.standard.data(forKey: "historyEntries"),
+              let entries = try? JSONDecoder().decode([HistoryEntry].self, from: data) else { return }
+        historyEntries = entries
+    }
+
+    // ----------------------------------------
     // MARK: - Configuration
     // ----------------------------------------
 
@@ -100,6 +137,7 @@ class AppState {
            let config = try? JSONDecoder().decode(HotkeyConfig.self, from: data) {
             hotkeyConfig = config
         }
+        loadHistory()
     }
 
     /// 保存快捷键配置

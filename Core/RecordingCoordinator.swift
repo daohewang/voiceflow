@@ -37,6 +37,7 @@ final class RecordingCoordinator {
     private(set) var isRecording: Bool = false
     private var accumulatedASRText: String = ""
     private var currentSessionId: UUID = UUID()
+    private var recordingStartTime: Date?
 
     // ----------------------------------------
     // MARK: - Initialization
@@ -68,6 +69,7 @@ final class RecordingCoordinator {
         isRecording = true
         accumulatedASRText = ""
         currentSessionId = sessionId
+        recordingStartTime = Date()
 
         print("[RecordingCoordinator] Starting recording session: \(sessionId)")
 
@@ -157,6 +159,13 @@ final class RecordingCoordinator {
 
         let sessionId = currentSessionId
 
+        // 计算录音时长
+        var recordingDuration: TimeInterval = 0
+        if let startTime = recordingStartTime {
+            recordingDuration = Date().timeIntervalSince(startTime)
+        }
+        recordingStartTime = nil
+
         // 1. 立即停止音频采集
         audioEngine?.stopRecording()
         isRecording = false
@@ -201,10 +210,13 @@ final class RecordingCoordinator {
                 return
             }
 
+            // 捕获录音时长（在 Task 外部计算的局部变量）
+            let durationSecs = Int(recordingDuration)
+
             // 无 OpenRouter Key → 直接注入原始文本
             guard let openRouterKey = self.getAPIKey(.openRouter) else {
                 print("[RecordingCoordinator] No OpenRouter key, injecting raw ASR text")
-                self.injectText(finalText, sessionId: sessionId)
+                self.injectText(finalText, asrText: finalText, sessionId: sessionId, durationSeconds: durationSecs)
                 return
             }
 
@@ -223,7 +235,7 @@ final class RecordingCoordinator {
                 Task { @MainActor [weak self] in
                     guard AppState.shared.isValidSession(sessionId) else { return }
                     print("[RecordingCoordinator] LLM complete: \(completedText)")
-                    self?.injectText(completedText, sessionId: sessionId)
+                    self?.injectText(completedText, asrText: finalText, sessionId: sessionId, durationSeconds: durationSecs)
                 }
             }
 
@@ -232,7 +244,7 @@ final class RecordingCoordinator {
                     guard let self = self else { return }
                     guard AppState.shared.isValidSession(sessionId) else { return }
                     print("[RecordingCoordinator] LLM error: \(error.localizedDescription), injecting raw ASR text")
-                    self.injectText(finalText, sessionId: sessionId)
+                    self.injectText(finalText, asrText: finalText, sessionId: sessionId, durationSeconds: durationSecs)
                 }
             }
 
@@ -246,7 +258,7 @@ final class RecordingCoordinator {
                 if AppState.shared.currentStatus == .processing {
                     print("[RecordingCoordinator] LLM timeout, injecting raw ASR text")
                     llmClient.cancel()
-                    self?.injectText(finalText, sessionId: sessionId)
+                    self?.injectText(finalText, asrText: finalText, sessionId: sessionId, durationSeconds: durationSecs)
                 }
             }
         }
@@ -277,7 +289,7 @@ final class RecordingCoordinator {
     // ----------------------------------------
 
     /// 注入文本到当前输入框
-    private func injectText(_ text: String, sessionId: UUID) {
+    private func injectText(_ text: String, asrText: String, sessionId: UUID, durationSeconds: Int) {
         let appState = AppState.shared
         guard appState.isValidSession(sessionId) else {
             print("[RecordingCoordinator] Invalid session, skipping inject")
@@ -308,6 +320,17 @@ final class RecordingCoordinator {
                 guard AppState.shared.isValidSession(sessionId) else { return }
                 print("[RecordingCoordinator] Text injected successfully")
                 AppState.shared.currentStatus = .idle
+
+                // 更新统计数据（传入真实录音时长）
+                let charCount = text.count
+                UsageStats.shared.recordSession(durationSeconds: max(1, durationSeconds), characterCount: charCount)
+
+                // 保存历史条目
+                AppState.shared.addHistoryEntry(
+                    asrText: asrText,
+                    finalText: text,
+                    durationSeconds: durationSeconds
+                )
 
                 // 隐藏指示器
                 RecordingIndicatorManager.shared.hide()

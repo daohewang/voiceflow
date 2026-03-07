@@ -152,14 +152,14 @@ generate_app_icon() {
         # 创建临时 PNG 图标
         TEMP_ICON="/tmp/voiceflow_icon.png"
 
-        # 使用 Swift 生成图标
+        # 使用 Swift 生成图标（橙色渐变 + waveform，与首页主题色一致）
         cat > /tmp/generate_icon.swift << 'SWIFT_EOF'
 import Foundation
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
+import AppKit
 
-// 创建一个简单的渐变图标
 let size = CGSize(width: 1024, height: 1024)
 let colorSpace = CGColorSpaceCreateDeviceRGB()
 let context = CGContext(
@@ -172,39 +172,41 @@ let context = CGContext(
     bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
 )!
 
-// 绘制圆角矩形背景
-let rect = CGRect(origin: .zero, size: size)
-let path = CGPath(
-    roundedRect: rect,
-    cornerWidth: 200,
-    cornerHeight: 200,
-    transform: nil
-)
-
-// 创建渐变
-let colors = [
-    CGColor(red: 0.925, green: 0.278, blue: 0.6, alpha: 1.0),  // #ec4899
-    CGColor(red: 0.545, green: 0.361, blue: 0.965, alpha: 1.0) // #8b5cf6
-]
-let gradient = CGGradient(colorsSpace: colorSpace, colors: colors as CFArray, locations: [0, 1])!
-
+// 圆角矩形裁切
+let path = CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: 200, cornerHeight: 200, transform: nil)
 context.addPath(path)
 context.clip()
 
-context.drawLinearGradient(
-    gradient,
-    start: CGPoint(x: 0, y: 0),
-    end: CGPoint(x: size.width, y: size.height),
-    options: []
-)
+// 橙色渐变（#FF6B35 → #FF8F65，与首页主题色一致）
+let gradColors = [
+    CGColor(red: 1.0, green: 0.420, blue: 0.208, alpha: 1.0),
+    CGColor(red: 1.0, green: 0.561, blue: 0.396, alpha: 1.0)
+]
+let gradient = CGGradient(colorsSpace: colorSpace, colors: gradColors as CFArray, locations: [0.0, 1.0])!
+context.drawLinearGradient(gradient,
+    start: CGPoint(x: 0, y: size.height),
+    end: CGPoint(x: size.width, y: 0),
+    options: [])
 
-// 保存为 PNG
-let url = URL(fileURLWithPath: "/tmp/voiceflow_icon_base.png")
-guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
-    exit(1)
+// 白色 waveform 符号
+let symConfig = NSImage.SymbolConfiguration(pointSize: 420, weight: .semibold)
+    .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
+if let sym = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?.withSymbolConfiguration(symConfig) {
+    let w = sym.size.width
+    let h = sym.size.height
+    let x = (size.width - w) / 2
+    let y = (size.height - h) / 2
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+    sym.draw(in: NSRect(x: x, y: y, width: w, height: h))
+    NSGraphicsContext.restoreGraphicsState()
 }
-CGImageDestinationAddImage(destination, context.makeImage()!, nil)
-CGImageDestinationFinalize(destination)
+
+// 输出 PNG
+let url = URL(fileURLWithPath: "/tmp/voiceflow_icon_base.png")
+let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
+CGImageDestinationAddImage(dest, context.makeImage()!, nil)
+CGImageDestinationFinalize(dest)
 SWIFT_EOF
 
         swift /tmp/generate_icon.swift 2>/dev/null || true
@@ -239,12 +241,29 @@ SWIFT_EOF
 sign_app() {
     log_info "签名应用..."
 
-    # 使用 ad-hoc 签名 (无需开发者账户)
+    # 按优先级依次尝试可用的签名证书
+    local CERTS=("VoiceFlow Dev" "Apple Development")
+
+    for CERT in "${CERTS[@]}"; do
+        if security find-identity -v -p codesigning | grep -q "${CERT}"; then
+            local FULL_CERT
+            FULL_CERT=$(security find-identity -v -p codesigning | grep "${CERT}" | head -1 | awk -F'"' '{print $2}')
+            log_info "使用证书签名: ${FULL_CERT}"
+            codesign --force --deep --sign "${FULL_CERT}" "${RELEASE_DIR}/${APP_BUNDLE}" 2>/dev/null && {
+                log_success "应用签名完成（更新后辅助功能权限不会失效）"
+                return
+            }
+            log_warn "${CERT} 签名失败，尝试下一个..."
+        fi
+    done
+
+    # 回退：ad-hoc 签名
+    log_warn "无可用持久证书，使用 ad-hoc 签名（每次更新后需重新授权辅助功能权限）"
     codesign --force --deep --sign - "${RELEASE_DIR}/${APP_BUNDLE}" 2>/dev/null || {
         log_warn "签名失败，应用可能需要手动授权"
     }
 
-    log_success "应用签名完成"
+    log_success "应用签名完成（ad-hoc）"
 }
 
 # ----------------------------------------
