@@ -126,18 +126,32 @@ class AppState {
     // MARK: - Configuration
     // ----------------------------------------
 
-    var selectedStyleId: String = "default"
+    var selectedStyleId: String = "default" {
+        didSet { saveSelectedStyleId() }
+    }
     var apiKeyElevenLabs: String?
     var apiKeyOpenRouter: String?
     var hotkeyConfig: HotkeyConfig = .default
 
     /// 加载保存的配置
     func loadSavedConfig() {
+        // 加载快捷键配置
         if let data = UserDefaults.standard.data(forKey: "hotkeyConfig"),
            let config = try? JSONDecoder().decode(HotkeyConfig.self, from: data) {
             hotkeyConfig = config
         }
+
+        // 加载上次选择的模板 ID
+        if let savedStyleId = UserDefaults.standard.string(forKey: "selectedStyleId") {
+            selectedStyleId = savedStyleId
+        }
+
         loadHistory()
+    }
+
+    /// 保存选中的模板 ID（自动调用）
+    private func saveSelectedStyleId() {
+        UserDefaults.standard.set(selectedStyleId, forKey: "selectedStyleId")
     }
 
     /// 保存快捷键配置

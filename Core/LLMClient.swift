@@ -75,6 +75,16 @@ final class LLMClient {
         accumulatedText = ""
 
         let systemPrompt = buildSystemPrompt(for: style)
+        let logMsg = """
+        ========== LLM Request ==========
+        [Template ID]: \(style)
+        [User Text]: \(text)
+        [System Prompt]:
+        \(systemPrompt)
+        =================================
+
+        """
+        Logger.shared.log(logMsg)
         let request = buildRequest(text: text, systemPrompt: systemPrompt, apiKey: apiKey)
 
         currentTask = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
@@ -123,24 +133,21 @@ final class LLMClient {
         return request
     }
 
-    /// 根据风格 ID 构建系统提示词
-    private func buildSystemPrompt(for styleId: String) -> String {
-        let basePrompt = """
-        你是一个专业的文本润色助手。用户会提供一段语音转文字的内容，可能包含口语化表达、停顿词、重复或不连贯的地方。
+    /// 根据模板 ID 构建系统提示词
+    /// 优先从 StyleTemplateStore 读取用户自定义模板，fallback 到默认润色
+    private func buildSystemPrompt(for templateId: String) -> String {
+        // 从 Store 查找模板（包含预定义 + 自定义）
+        if let template = StyleTemplateStore.shared.template(byId: templateId) {
+            return template.systemPrompt
+        }
 
-        请对文本进行润色，使其更加流畅、清晰、专业。保持原意不变，但改善表达方式。
-        只输出润色后的文本，不要添加任何解释或说明。
-        """
+        // Fallback: 使用默认润色模板
+        let defaultPrompt = StyleTemplate.predefinedTemplates
+            .first { $0.id == "default" }?
+            .systemPrompt
+            ?? "你是一个专业的文字润色助手。请将用户输入的口语化文本改写为更加流畅、专业的书面语，保持原意不变。输出只包含润色后的文本，不要有任何解释。"
 
-        let styleAdditions: [String: String] = [
-            "default": "保持原样，仅修正明显的语法错误和不通顺的地方。",
-            "formal": "转换为正式商务写作风格，使用专业术语和规范表达。",
-            "casual": "转换为轻松友好的日常沟通风格，使用口语化但清晰的表达。",
-            "code": "转换为适合代码注释的技术文档风格，简洁精确，使用技术术语。"
-        ]
-
-        let addition = styleAdditions[styleId] ?? styleAdditions["default"]!
-        return basePrompt + "\n\n风格要求：" + addition
+        return defaultPrompt
     }
 
     // ----------------------------------------
