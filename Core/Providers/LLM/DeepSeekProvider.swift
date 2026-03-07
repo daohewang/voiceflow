@@ -28,7 +28,12 @@ struct DeepSeekProvider: LLMProvider {
         systemPrompt: String,
         apiKey: String
     ) async throws -> String {
+        print("[DeepSeekProvider] Starting request...")
+        print("[DeepSeekProvider] API Key (first 10 chars): \(String(apiKey.prefix(10)))...")
+        print("[DeepSeekProvider] Text: \(text)")
+
         guard !apiKey.isEmpty else {
+            print("[DeepSeekProvider] ERROR: Missing API Key")
             throw LLMProviderError.missingAPIKey
         }
 
@@ -36,6 +41,7 @@ struct DeepSeekProvider: LLMProvider {
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 60
 
         let body: [String: Any] = [
             "model": model,
@@ -49,31 +55,44 @@ struct DeepSeekProvider: LLMProvider {
         ]
 
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        print("[DeepSeekProvider] Request body: \(String(data: request.httpBody!, encoding: .utf8) ?? "nil")")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw LLMProviderError.invalidResponse
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            // 尝试解析错误信息
-            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let error = errorJson["error"] as? [String: Any],
-               let message = error["message"] as? String {
-                throw LLMProviderError.apiError(message)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("[DeepSeekProvider] ERROR: Invalid response type")
+                throw LLMProviderError.invalidResponse
             }
-            throw LLMProviderError.apiError("HTTP \(httpResponse.statusCode)")
-        }
 
-        // 解析响应
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = json["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any],
-              let content = message["content"] as? String else {
-            throw LLMProviderError.decodingError
-        }
+            print("[DeepSeekProvider] Response status: \(httpResponse.statusCode)")
+            print("[DeepSeekProvider] Response body: \(String(data: data, encoding: .utf8) ?? "nil")")
 
-        return content
+            guard httpResponse.statusCode == 200 else {
+                // 尝试解析错误信息
+                if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let error = errorJson["error"] as? [String: Any],
+                   let message = error["message"] as? String {
+                    print("[DeepSeekProvider] API Error: \(message)")
+                    throw LLMProviderError.apiError(message)
+                }
+                throw LLMProviderError.apiError("HTTP \(httpResponse.statusCode)")
+            }
+
+            // 解析响应
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let choices = json["choices"] as? [[String: Any]],
+                  let message = choices.first?["message"] as? [String: Any],
+                  let content = message["content"] as? String else {
+                print("[DeepSeekProvider] ERROR: Failed to decode response")
+                throw LLMProviderError.decodingError
+            }
+
+            print("[DeepSeekProvider] Success! Content: \(content)")
+            return content
+        } catch {
+            print("[DeepSeekProvider] ERROR: \(error.localizedDescription)")
+            throw error
+        }
     }
 }

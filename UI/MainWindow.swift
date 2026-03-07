@@ -755,11 +755,42 @@ struct SettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @State private var selectedTab: SettingsTab = .apiKeys
+
+    // ----------------------------------------
+    // MARK: - ASR Providers (Enable/Disable)
+    // ----------------------------------------
+
+    @State private var elevenLabsEnabled: Bool = false
     @State private var elevenLabsKey: String = ""
-    @State private var openRouterKey: String = ""
     @State private var showElevenLabsKey: Bool = false
+
+    // ----------------------------------------
+    // MARK: - LLM Providers (Enable/Disable)
+    // ----------------------------------------
+
+    @State private var openRouterEnabled: Bool = false
+    @State private var openRouterKey: String = ""
     @State private var showOpenRouterKey: Bool = false
+
+    @State private var deepSeekEnabled: Bool = false
+    @State private var deepSeekKey: String = ""
+    @State private var showDeepSeekKey: Bool = false
+
+    @State private var miniMaxEnabled: Bool = false
+    @State private var miniMaxKey: String = ""
+
+    @State private var zhiPuEnabled: Bool = false
+    @State private var zhiPuKey: String = ""
+
+    @State private var kimiEnabled: Bool = false
+    @State private var kimiKey: String = ""
+
     @State private var isRecordingHotkey: Bool = false
+    @State private var showSaveSuccess: Bool = false
+
+    // ----------------------------------------
+    // MARK: - Tabs
+    // ----------------------------------------
 
     private enum SettingsTab: String, CaseIterable {
         case apiKeys = "API 配置"
@@ -768,61 +799,32 @@ struct SettingsSheet: View {
 
         var icon: String {
             switch self {
-            case .apiKeys: return "key"
-            case .hotkey: return "keyboard"
-            case .about: return "info.circle"
+            case .apiKeys: return "key.fill"
+            case .hotkey: return "keyboard.fill"
+            case .about: return "info.circle.fill"
             }
         }
     }
 
+    // ----------------------------------------
+    // MARK: - Body
+    // ----------------------------------------
+
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部栏
-            HStack {
-                Text("设置")
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundColor(.textPrimary)
+            // 顶部标题栏
+            sheetHeader
 
-                Spacer()
+            Divider()
 
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(.textTertiary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(Color.cardBackground)
+            // Tab 选择器
+            tabBar
 
-            // Tab 栏
-            HStack(spacing: 0) {
-                ForEach(SettingsTab.allCases, id: \.self) { tab in
-                    Button {
-                        selectedTab = tab
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: tab.icon)
-                                .font(.system(size: 12))
-                            Text(tab.rawValue)
-                                .font(.system(size: 13, design: .rounded))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(selectedTab == tab ? Color.themePrimary.opacity(0.1) : .clear)
-                        .foregroundColor(selectedTab == tab ? .themePrimary : .textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .background(Color.themeBackground)
+            Divider()
 
             // 内容区
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 20) {
                     switch selectedTab {
                     case .apiKeys:
                         apiKeysContent
@@ -832,136 +834,337 @@ struct SettingsSheet: View {
                         aboutContent
                     }
                 }
-                .padding(20)
+                .padding(24)
             }
         }
-        .frame(width: 420, height: 400)
-        .background(Color.themeBackground)
+        .frame(width: 520, height: 580)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             loadSettings()
         }
     }
 
+    // ----------------------------------------
+    // MARK: - Sheet Header
+    // ----------------------------------------
+
+    private var sheetHeader: some View {
+        HStack {
+            Text("设置")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 20))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.escape, modifiers: [])
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 20)
+        .background(.ultraThinMaterial)
+    }
+
+    // ----------------------------------------
+    // MARK: - Tab Bar
+    // ----------------------------------------
+
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(SettingsTab.allCases, id: \.self) { tab in
+                Button {
+                    selectedTab = tab
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 13))
+                        Text(tab.rawValue)
+                            .font(.system(size: 14))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(selectedTab == tab ? Color.accentColor.opacity(0.15) : .clear)
+                    .foregroundStyle(selectedTab == tab ? .primary : .secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    // ----------------------------------------
+    // MARK: - API Keys Content
+    // ----------------------------------------
+
     private var apiKeysContent: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // ElevenLabs
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("ElevenLabs API Key")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundColor(.textPrimary)
-                    Spacer()
-                    Link("获取密钥", destination: URL(string: "https://elevenlabs.io")!)
-                        .font(.caption)
-                        .foregroundColor(.themePrimary)
-                }
-
-                HStack {
-                    if showElevenLabsKey {
-                        TextField("sk-...", text: $elevenLabsKey)
-                            .textFieldStyle(.plain)
-                            .padding(10)
-                            .background(Color.cardBackground)
-                            .cornerRadius(8)
-                            .foregroundColor(.textPrimary)
-                    } else {
-                        SecureField("sk-...", text: $elevenLabsKey)
-                            .textFieldStyle(.plain)
-                            .padding(10)
-                            .background(Color.cardBackground)
-                            .cornerRadius(8)
-                            .foregroundColor(.textPrimary)
-                    }
-
-                    Button {
-                        showElevenLabsKey.toggle()
-                    } label: {
-                        Image(systemName: showElevenLabsKey ? "eye.slash" : "eye")
-                            .foregroundColor(.textTertiary)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Text("用于 ASR 语音识别服务")
-                    .font(.caption2)
-                    .foregroundColor(.textTertiary)
+        VStack(alignment: .leading, spacing: 24) {
+            // MARK: - ASR 提供商
+            providerSection(
+                title: "语音识别 (ASR)",
+                subtitle: "启用需要使用的语音识别服务"
+            ) {
+                providerRow(
+                    name: "ElevenLabs",
+                    isEnabled: $elevenLabsEnabled,
+                    key: $elevenLabsKey,
+                    showKey: $showElevenLabsKey,
+                    placeholder: "xi-...",
+                    helpURL: "https://elevenlabs.io",
+                    description: "ElevenLabs Realtime STT 低延迟语音识别"
+                )
             }
 
             Divider()
-                .background(Color.divider)
 
-            // OpenRouter
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("OpenRouter API Key")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundColor(.textPrimary)
-                    Spacer()
-                    Link("获取密钥", destination: URL(string: "https://openrouter.ai/keys")!)
-                        .font(.caption)
-                        .foregroundColor(.themePrimary)
+            // MARK: - LLM 提供商
+            providerSection(
+                title: "文本润色 (LLM)",
+                subtitle: "启用需要使用的 AI 模型服务"
+            ) {
+                VStack(spacing: 16) {
+                    providerRow(
+                        name: "OpenRouter",
+                        isEnabled: $openRouterEnabled,
+                        key: $openRouterKey,
+                        showKey: $showOpenRouterKey,
+                        placeholder: "sk-or-...",
+                        helpURL: "https://openrouter.ai/keys",
+                        description: "支持 GPT-4o、Claude、Gemini 等多种模型"
+                    )
+
+                    providerRow(
+                        name: "DeepSeek",
+                        isEnabled: $deepSeekEnabled,
+                        key: $deepSeekKey,
+                        showKey: $showDeepSeekKey,
+                        placeholder: "sk-...",
+                        helpURL: "https://platform.deepseek.com",
+                        description: "DeepSeek Chat 模型，性价比高"
+                    )
+
+                    providerRow(
+                        name: "MiniMax",
+                        isEnabled: $miniMaxEnabled,
+                        key: $miniMaxKey,
+                        showKey: .constant(false),
+                        placeholder: "...",
+                        helpURL: "https://www.minimaxi.com",
+                        description: "MiniMax 大语言模型"
+                    )
+
+                    providerRow(
+                        name: "智谱 GLM",
+                        isEnabled: $zhiPuEnabled,
+                        key: $zhiPuKey,
+                        showKey: .constant(false),
+                        placeholder: "...",
+                        helpURL: "https://open.bigmodel.cn",
+                        description: "智谱 GLM 大语言模型"
+                    )
+
+                    providerRow(
+                        name: "Kimi",
+                        isEnabled: $kimiEnabled,
+                        key: $kimiKey,
+                        showKey: .constant(false),
+                        placeholder: "sk-...",
+                        helpURL: "https://platform.moonshot.cn",
+                        description: "Moonshot Kimi 长上下文模型"
+                    )
                 }
-
-                HStack {
-                    if showOpenRouterKey {
-                        TextField("sk-or-...", text: $openRouterKey)
-                            .textFieldStyle(.plain)
-                            .padding(10)
-                            .background(Color.cardBackground)
-                            .cornerRadius(8)
-                            .foregroundColor(.textPrimary)
-                    } else {
-                        SecureField("sk-or-...", text: $openRouterKey)
-                            .textFieldStyle(.plain)
-                            .padding(10)
-                            .background(Color.cardBackground)
-                            .cornerRadius(8)
-                            .foregroundColor(.textPrimary)
-                    }
-
-                    Button {
-                        showOpenRouterKey.toggle()
-                    } label: {
-                        Image(systemName: showOpenRouterKey ? "eye.slash" : "eye")
-                            .foregroundColor(.textTertiary)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Text("用于 LLM 文本润色 (GPT-4o、Claude 等)")
-                    .font(.caption2)
-                    .foregroundColor(.textTertiary)
             }
 
             Spacer()
 
-            // 保存按钮
-            Button {
-                saveSettings()
-                dismiss()
-            } label: {
-                Text("保存")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Color.themePrimary)
-                    .cornerRadius(8)
+            // 保存成功提示
+            if showSaveSuccess {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("保存成功")
+                        .foregroundStyle(.green)
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .transition(.opacity)
             }
-            .buttonStyle(.plain)
+
+            // 底部按钮
+            HStack(spacing: 12) {
+                Button("取消") {
+                    loadSettings()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+
+                Spacer()
+
+                Button("保存") {
+                    saveSettings()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            }
         }
     }
 
-    private var hotkeyContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("全局快捷键")
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundColor(.textPrimary)
+    // ----------------------------------------
+    // MARK: - Provider Section
+    // ----------------------------------------
 
+    @ViewBuilder
+    private func providerSection<Content: View>(
+        title: String,
+        subtitle: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            content()
+        }
+    }
+
+    // ----------------------------------------
+    // MARK: - Provider Row
+    // ----------------------------------------
+
+    @ViewBuilder
+    private func providerRow(
+        name: String,
+        isEnabled: Binding<Bool>,
+        key: Binding<String>,
+        showKey: Binding<Bool>,
+        placeholder: String,
+        helpURL: String,
+        description: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // 开关行
+            HStack(spacing: 12) {
+                Toggle("", isOn: isEnabled)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .labelsHidden()
+
+                Text(name)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                Link("获取密钥", destination: URL(string: helpURL)!)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.accentColor)
+            }
+
+            // API Key 输入区（仅启用时显示）
+            if isEnabled.wrappedValue {
+                HStack(spacing: 8) {
+                    if showKey.wrappedValue {
+                        TextField(placeholder, text: key)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    } else {
+                        SecureField(placeholder, text: key)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    Button {
+                        showKey.wrappedValue.toggle()
+                    } label: {
+                        Image(systemName: showKey.wrappedValue ? "eye.slash" : "eye")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text(description)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isEnabled.wrappedValue ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    // ----------------------------------------
+    // MARK: - Hotkey Content
+    // ----------------------------------------
+
+    private var hotkeyContent: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("全局快捷键")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text("设置全局快捷键以快速启动录音")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            // 权限警告
+            if !AXIsProcessTrusted() {
+                VStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("缺少辅助功能权限")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.primary)
+                    }
+
+                    Text("没有辅助功能权限，快捷键无法拦截按键事件")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    Button("打开系统设置") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.orange.opacity(0.1))
+                )
+            }
+
+            Divider()
+
+            // 快捷键录制
             HStack {
                 Text("录音快捷键")
-                    .font(.system(size: 12, design: .rounded))
-                    .foregroundColor(.textSecondary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.primary)
 
                 Spacer()
 
@@ -976,79 +1179,183 @@ struct SettingsSheet: View {
             }
 
             Text(isRecordingHotkey ? "按下新的快捷键组合..." : "点击上方按钮可以重新录制快捷键")
-                .font(.caption2)
-                .foregroundColor(isRecordingHotkey ? .themePrimary : .textTertiary)
+                .font(.system(size: 11))
+                .foregroundStyle(isRecordingHotkey ? Color.accentColor : Color.secondary)
 
             Spacer()
+
+            // 使用说明
+            VStack(alignment: .leading, spacing: 6) {
+                Text("使用说明")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("• 单击: 按住录音，松开停止")
+                    Text("• 双击: 切换模式（再按一次停止）")
+                    Text("• ESC: 取消当前录音")
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            )
         }
     }
 
+    // ----------------------------------------
+    // MARK: - About Content
+    // ----------------------------------------
+
     private var aboutContent: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
+            Spacer()
+
             Image(systemName: "waveform.circle.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color(hex: "FF6B35"), Color(hex: "FF8F65")],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .font(.system(size: 72))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(Color.accentColor)
 
-            Text("VoiceFlow")
-                .font(.system(size: 20, weight: .bold, design: .rounded))
-                .foregroundColor(.textPrimary)
+            VStack(spacing: 6) {
+                Text("VoiceFlow")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(.primary)
 
-            Text("版本 0.0.2")
-                .font(.system(size: 12, design: .rounded))
-                .foregroundColor(.textTertiary)
+                Text("版本 0.0.2")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
 
-            Text("语音输入，智能润色")
-                .font(.system(size: 13, design: .rounded))
-                .foregroundColor(.textSecondary)
+            Text("语音输入，智能润色\n让您的声音变成完美的文字")
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
 
             Divider()
-                .background(Color.divider)
+                .frame(width: 120)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 12) {
                 Link(destination: URL(string: "https://github.com/daohewang/voiceflow")!) {
-                    HStack {
-                        Image(systemName: "link")
-                            .foregroundColor(.themePrimary)
-                        Text("GitHub 仓库")
-                            .font(.system(size: 12, design: .rounded))
-                            .foregroundColor(.textPrimary)
-                    }
+                    Label("GitHub 仓库", systemImage: "link")
+                        .font(.system(size: 13))
                 }
 
                 Link(destination: URL(string: "https://github.com/daohewang/voiceflow/issues")!) {
-                    HStack {
-                        Image(systemName: "ladybug")
-                            .foregroundColor(.themePrimary)
-                        Text("反馈问题")
-                            .font(.system(size: 12, design: .rounded))
-                            .foregroundColor(.textPrimary)
-                    }
+                    Label("反馈问题", systemImage: "ladybug")
+                        .font(.system(size: 13))
                 }
             }
 
             Spacer()
+
+            Text("© 2024 VoiceFlow. All rights reserved.")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
     }
 
+    // ----------------------------------------
+    // MARK: - Actions
+    // ----------------------------------------
+
     private func loadSettings() {
+        // 加载 ASR 启用状态和密钥
         if let key = try? KeychainManager.shared.get(.elevenLabs), !key.isEmpty {
+            elevenLabsEnabled = true
             elevenLabsKey = key
         }
+
+        // 加载 LLM 启用状态和密钥
         if let key = try? KeychainManager.shared.get(.openRouter), !key.isEmpty {
+            openRouterEnabled = true
             openRouterKey = key
+        }
+        if let key = try? KeychainManager.shared.get(.deepSeek), !key.isEmpty {
+            deepSeekEnabled = true
+            deepSeekKey = key
+        }
+        if let key = try? KeychainManager.shared.get(.miniMax), !key.isEmpty {
+            miniMaxEnabled = true
+            miniMaxKey = key
+        }
+        if let key = try? KeychainManager.shared.get(.zhiPu), !key.isEmpty {
+            zhiPuEnabled = true
+            zhiPuKey = key
+        }
+        if let key = try? KeychainManager.shared.get(.kimi), !key.isEmpty {
+            kimiEnabled = true
+            kimiKey = key
         }
     }
 
     private func saveSettings() {
-        try? KeychainManager.shared.update(elevenLabsKey, for: .elevenLabs)
-        try? KeychainManager.shared.update(openRouterKey, for: .openRouter)
+        // 保存 ASR 密钥
+        if elevenLabsEnabled {
+            try? KeychainManager.shared.update(elevenLabsKey, for: .elevenLabs)
+        } else {
+            try? KeychainManager.shared.delete(.elevenLabs)
+        }
+
+        // 保存 LLM 密钥
+        if openRouterEnabled {
+            try? KeychainManager.shared.update(openRouterKey, for: .openRouter)
+        } else {
+            try? KeychainManager.shared.delete(.openRouter)
+        }
+
+        if deepSeekEnabled {
+            try? KeychainManager.shared.update(deepSeekKey, for: .deepSeek)
+        } else {
+            try? KeychainManager.shared.delete(.deepSeek)
+        }
+
+        if miniMaxEnabled {
+            try? KeychainManager.shared.update(miniMaxKey, for: .miniMax)
+        } else {
+            try? KeychainManager.shared.delete(.miniMax)
+        }
+
+        if zhiPuEnabled {
+            try? KeychainManager.shared.update(zhiPuKey, for: .zhiPu)
+        } else {
+            try? KeychainManager.shared.delete(.zhiPu)
+        }
+
+        if kimiEnabled {
+            try? KeychainManager.shared.update(kimiKey, for: .kimi)
+        } else {
+            try? KeychainManager.shared.delete(.kimi)
+        }
+
+        // 设置第一个启用的 LLM 提供商为当前提供商
+        if openRouterEnabled {
+            appState.llmProvider = .openRouter
+        } else if deepSeekEnabled {
+            appState.llmProvider = .deepSeek
+        } else if miniMaxEnabled {
+            appState.llmProvider = .miniMax
+        } else if zhiPuEnabled {
+            appState.llmProvider = .zhiPu
+        } else if kimiEnabled {
+            appState.llmProvider = .kimi
+        }
+
+        // ASR 固定为 ElevenLabs（目前只支持这一个）
+        if elevenLabsEnabled {
+            appState.asrProvider = .elevenLabs
+        }
+
+        // 显示成功提示
+        showSaveSuccess = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            showSaveSuccess = false
+        }
     }
 }
 
