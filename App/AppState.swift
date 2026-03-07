@@ -129,6 +129,15 @@ class AppState {
     var selectedStyleId: String = "default" {
         didSet { saveSelectedStyleId() }
     }
+
+    // 提供商选择
+    var llmProvider: LLMProviderType = .openRouter {
+        didSet { saveProviderConfig() }
+    }
+    var asrProvider: ASRProviderType = .elevenLabs {
+        didSet { saveProviderConfig() }
+    }
+
     var apiKeyElevenLabs: String?
     var apiKeyOpenRouter: String?
     var hotkeyConfig: HotkeyConfig = .default
@@ -146,12 +155,27 @@ class AppState {
             selectedStyleId = savedStyleId
         }
 
+        // 加载提供商配置
+        if let data = UserDefaults.standard.data(forKey: "providerConfig"),
+           let config = try? JSONDecoder().decode(ProviderConfig.self, from: data) {
+            llmProvider = config.llmProvider
+            asrProvider = config.asrProvider
+        }
+
         loadHistory()
     }
 
     /// 保存选中的模板 ID（自动调用）
     private func saveSelectedStyleId() {
         UserDefaults.standard.set(selectedStyleId, forKey: "selectedStyleId")
+    }
+
+    /// 保存提供商配置（自动调用）
+    private func saveProviderConfig() {
+        let config = ProviderConfig(llmProvider: llmProvider, asrProvider: asrProvider)
+        if let data = try? JSONEncoder().encode(config) {
+            UserDefaults.standard.set(data, forKey: "providerConfig")
+        }
     }
 
     /// 保存快捷键配置

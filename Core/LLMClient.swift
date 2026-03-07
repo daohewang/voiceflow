@@ -59,12 +59,13 @@ final class LLMClient {
     // MARK: - Public API
     // ----------------------------------------
 
-    /// 流式润色文本
+    /// 流式润色文本（使用提供商系统）
     /// - Parameters:
     ///   - text: 原始文本
     ///   - style: 风格模板 ID
-    ///   - apiKey: OpenAI API Key
-    func polishText(_ text: String, style: String, apiKey: String) {
+    ///   - apiKey: API Key
+    ///   - providerType: LLM 提供商类型
+    func polishText(_ text: String, style: String, apiKey: String, providerType: LLMProviderType = .openRouter) {
         guard !isStreaming else { return }
         guard !apiKey.isEmpty else {
             onError?(LLMError.missingAPIKey)
@@ -77,6 +78,7 @@ final class LLMClient {
         let systemPrompt = buildSystemPrompt(for: style)
         let logMsg = """
         ========== LLM Request ==========
+        [Provider]: \(providerType.displayName)
         [Template ID]: \(style)
         [User Text]: \(text)
         [System Prompt]:
@@ -85,13 +87,27 @@ final class LLMClient {
 
         """
         Logger.shared.log(logMsg)
-        let request = buildRequest(text: text, systemPrompt: systemPrompt, apiKey: apiKey)
 
-        currentTask = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            self?.handleResponse(data: data, response: response, error: error)
+        // 使用提供商工厂创建提供商
+        let provider = ProviderFactory.createLLMProvider(type: providerType)
+
+        // 异步调用
+        Task { @MainActor [weak self] in
+            do {
+                let result = try await provider.polishText(text, systemPrompt: systemPrompt, apiKey: apiKey)
+                self?.accumulatedText = result
+                self?.onComplete?(result)
+                self?.isStreaming = false
+            } catch {
+                self?.onError?(error)
+                self?.isStreaming = false
+            }
         }
+    }
 
-        currentTask?.resume()
+    /// 流式润色文本（旧接口，保持兼容）
+    func polishText(_ text: String, style: String, apiKey: String) {
+        polishText(text, style: style, apiKey: apiKey, providerType: .openRouter)
     }
 
     /// 取消当前请求
@@ -100,37 +116,6 @@ final class LLMClient {
         currentTask = nil
         isStreaming = false
         accumulatedText = ""
-    }
-
-    
-
-    // ----------------------------------------
-    // MARK: - Request Building
-    // ----------------------------------------
-
-    private func buildRequest(text: String, systemPrompt: String, apiKey: String) -> URLRequest {
-        var request = URLRequest(url: URL(string: apiBaseURL)!)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        // OpenRouter 可选 headers (用于排行榜)
-        request.setValue("https://github.com/voiceflow", forHTTPHeaderField: "HTTP-Referer")
-        request.setValue("VoiceFlow", forHTTPHeaderField: "X-Title")
-
-        let body: [String: Any] = [
-            "model": model,
-            "messages": [
-                ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": text]
-            ],
-            "stream": true,
-            "temperature": 0.7,
-            "max_tokens": 2000
-        ]
-
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        return request
     }
 
     /// 根据模板 ID 构建系统提示词

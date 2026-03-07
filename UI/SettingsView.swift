@@ -18,8 +18,19 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedTab: SettingsTab = .apiKeys
+    // ASR 提供商
+    @State private var asrProvider: ASRProviderType = .elevenLabs
     @State private var elevenLabsKey: String = ""
+    @State private var deepSeekASRKey: String = ""
+    @State private var openAIASRKey: String = ""
+    // LLM 提供商
+    @State private var llmProvider: LLMProviderType = .openRouter
     @State private var openRouterKey: String = ""
+    @State private var deepSeekLLMKey: String = ""
+    @State private var miniMaxKey: String = ""
+    @State private var zhiPuKey: String = ""
+    @State private var kimiKey: String = ""
+    // 显示/隐藏密钥
     @State private var showElevenLabsKey: Bool = false
     @State private var showOpenAIKey: Bool = false
 
@@ -115,78 +126,109 @@ struct SettingsView: View {
 
     private var apiKeysContent: some View {
         Form {
+            // MARK: - ASR 提供商选择
             Section {
-                // ElevenLabs API Key
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("ElevenLabs API Key")
-                            .font(.system(.subheadline, design: .rounded))
-                        Spacer()
-                        Link("获取密钥", destination: URL(string: "https://elevenlabs.io")!)
-                            .font(.caption)
+                Picker("语音识别服务", selection: $asrProvider) {
+                    ForEach(ASRProviderType.allCases) { provider in
+                        Text(provider.displayName).tag(provider)
                     }
-
-                    HStack {
-                        if showElevenLabsKey {
-                            TextField("sk-...", text: $elevenLabsKey)
-                                .textFieldStyle(.roundedBorder)
-                        } else {
-                            SecureField("sk-...", text: $elevenLabsKey)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        Button {
-                            showElevenLabsKey.toggle()
-                        } label: {
-                            Image(systemName: showElevenLabsKey ? "eye.slash" : "eye")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    Text("用于 ASR 语音识别服务")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
                 }
-                .padding(.vertical, 4)
+                .pickerStyle(.segmented)
 
-                Divider()
-
-                // OpenRouter API Key
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("OpenRouter API Key")
-                            .font(.system(.subheadline, design: .rounded))
-                        Spacer()
-                        Link("获取密钥", destination: URL(string: "https://openrouter.ai/keys")!)
-                            .font(.caption)
-                    }
-
-                    HStack {
-                        if showOpenAIKey {
-                            TextField("sk-or-...", text: $openRouterKey)
-                                .textFieldStyle(.roundedBorder)
-                        } else {
-                            SecureField("sk-or-...", text: $openRouterKey)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        Button {
-                            showOpenAIKey.toggle()
-                        } label: {
-                            Image(systemName: showOpenAIKey ? "eye.slash" : "eye")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    Text("用于 LLM 文本润色服务 (支持 GPT-4o、Claude 等)")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                // 根据 ASR 提供商显示对应的 API Key 输入
+                switch asrProvider {
+                case .elevenLabs:
+                    apiKeyField(
+                        title: "ElevenLabs API Key",
+                        key: $elevenLabsKey,
+                        showKey: $showElevenLabsKey,
+                        placeholder: "xi-...",
+                        helpURL: "https://elevenlabs.io",
+                        description: "用于 ElevenLabs Realtime STT 语音识别"
+                    )
+                case .deepSeek:
+                    apiKeyField(
+                        title: "DeepSeek API Key",
+                        key: $deepSeekASRKey,
+                        showKey: .constant(false),
+                        placeholder: "sk-...",
+                        helpURL: "https://platform.deepseek.com",
+                        description: "用于 DeepSeek Whisper 语音识别"
+                    )
+                case .openAI:
+                    apiKeyField(
+                        title: "OpenAI API Key",
+                        key: $openAIASRKey,
+                        showKey: .constant(false),
+                        placeholder: "sk-...",
+                        helpURL: "https://platform.openai.com",
+                        description: "用于 OpenAI Whisper 语音识别"
+                    )
                 }
-                .padding(.vertical, 4)
             } header: {
-                Text("API 配置")
+                Text("语音识别 (ASR)")
+                    .font(.system(.headline, design: .rounded))
+            }
+
+            // MARK: - LLM 提供商选择
+            Section {
+                Picker("文本润色服务", selection: $llmProvider) {
+                    ForEach(LLMProviderType.allCases) { provider in
+                        Text(provider.displayName).tag(provider)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                // 根据 LLM 提供商显示对应的 API Key 输入
+                switch llmProvider {
+                case .openRouter:
+                    apiKeyField(
+                        title: "OpenRouter API Key",
+                        key: $openRouterKey,
+                        showKey: $showOpenAIKey,
+                        placeholder: "sk-or-...",
+                        helpURL: "https://openrouter.ai/keys",
+                        description: "支持 GPT-4o、Claude、Gemini 等多种模型"
+                    )
+                case .deepSeek:
+                    apiKeyField(
+                        title: "DeepSeek API Key",
+                        key: $deepSeekLLMKey,
+                        showKey: .constant(false),
+                        placeholder: "sk-...",
+                        helpURL: "https://platform.deepseek.com",
+                        description: "DeepSeek Chat 模型，性价比高"
+                    )
+                case .miniMax:
+                    apiKeyField(
+                        title: "MiniMax API Key",
+                        key: $miniMaxKey,
+                        showKey: .constant(false),
+                        placeholder: "...",
+                        helpURL: "https://www.minimaxi.com",
+                        description: "MiniMax 大语言模型"
+                    )
+                case .zhiPu:
+                    apiKeyField(
+                        title: "智谱 API Key",
+                        key: $zhiPuKey,
+                        showKey: .constant(false),
+                        placeholder: "...",
+                        helpURL: "https://open.bigmodel.cn",
+                        description: "智谱 GLM 大语言模型"
+                    )
+                case .kimi:
+                    apiKeyField(
+                        title: "Kimi API Key",
+                        key: $kimiKey,
+                        showKey: .constant(false),
+                        placeholder: "sk-...",
+                        helpURL: "https://platform.moonshot.cn",
+                        description: "Moonshot Kimi 长上下文模型"
+                    )
+                }
+            } header: {
+                Text("文本润色 (LLM)")
                     .font(.system(.headline, design: .rounded))
             } footer: {
                 VStack(spacing: 12) {
@@ -220,6 +262,53 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    // ----------------------------------------
+    // MARK: - API Key Field Helper
+    // ----------------------------------------
+
+    @ViewBuilder
+    private func apiKeyField(
+        title: String,
+        key: Binding<String>,
+        showKey: Binding<Bool>,
+        placeholder: String,
+        helpURL: String,
+        description: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title)
+                    .font(.system(.subheadline, design: .rounded))
+                Spacer()
+                Link("获取密钥", destination: URL(string: helpURL)!)
+                    .font(.caption)
+            }
+
+            HStack {
+                if showKey.wrappedValue {
+                    TextField(placeholder, text: key)
+                        .textFieldStyle(.roundedBorder)
+                } else {
+                    SecureField(placeholder, text: key)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Button {
+                    showKey.wrappedValue.toggle()
+                } label: {
+                    Image(systemName: showKey.wrappedValue ? "eye.slash" : "eye")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(description)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 4)
     }
 
     // ----------------------------------------

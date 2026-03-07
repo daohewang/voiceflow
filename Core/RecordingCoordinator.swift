@@ -213,9 +213,13 @@ final class RecordingCoordinator {
             // 捕获录音时长（在 Task 外部计算的局部变量）
             let durationSecs = Int(recordingDuration)
 
-            // 无 OpenRouter Key → 直接注入原始文本
-            guard let openRouterKey = self.getAPIKey(.openRouter) else {
-                print("[RecordingCoordinator] No OpenRouter key, injecting raw ASR text")
+            // 获取用户选择的 LLM 提供商和对应的 API Key
+            let llmProvider = AppState.shared.llmProvider
+            let llmKey: String? = self.getAPIKey(llmProvider.keychainKey)
+
+            // 无 LLM Key → 直接注入原始文本
+            guard let apiKey = llmKey, !apiKey.isEmpty else {
+                print("[RecordingCoordinator] No \(llmProvider.displayName) key, injecting raw ASR text")
                 self.injectText(finalText, asrText: finalText, sessionId: sessionId, durationSeconds: durationSecs)
                 return
             }
@@ -248,8 +252,8 @@ final class RecordingCoordinator {
                 }
             }
 
-            print("[RecordingCoordinator] Starting LLM polish for: '\(finalText)'")
-            llmClient.polishText(finalText, style: styleId, apiKey: openRouterKey)
+            print("[RecordingCoordinator] Starting LLM polish with \(llmProvider.displayName) for: '\(finalText)'")
+            llmClient.polishText(finalText, style: styleId, apiKey: apiKey, providerType: llmProvider)
 
             // 35秒超时保护（LLM超时30秒 + 5秒缓冲）
             Task { @MainActor [weak self] in

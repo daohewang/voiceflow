@@ -33,9 +33,16 @@ final class KeychainManager {
     // MARK: - Keys
     // ----------------------------------------
 
-    enum Key: String, Sendable {
+    enum Key: String, Sendable, CaseIterable {
         case elevenLabs = "api.elevenlabs"
         case openRouter = "api.openrouter"
+        // 新增 LLM 提供商
+        case deepSeek = "api.deepseek"
+        case miniMax = "api.minimax"
+        case zhiPu = "api.zhipu"
+        case kimi = "api.kimi"
+        // 新增 ASR 提供商
+        case openAI = "api.openai"
     }
 
     // ----------------------------------------
