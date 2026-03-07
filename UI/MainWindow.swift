@@ -447,6 +447,8 @@ struct MainWindow: View {
     @State private var showTemplateEditor = false
     @State private var editingTemplate: StyleTemplate?
     @State private var showAddTemplate = false
+    @State private var templateToDelete: StyleTemplate?
+    @State private var showDeleteConfirm = false
 
     private var rolesView: some View {
         ScrollView {
@@ -518,6 +520,21 @@ struct MainWindow: View {
                 StyleTemplateStore.shared.updateTemplate(updated)
             }
         }
+        .alert("删除人设", isPresented: $showDeleteConfirm, presenting: templateToDelete) { template in
+            Button("取消", role: .cancel) {
+                templateToDelete = nil
+            }
+            Button("删除", role: .destructive) {
+                StyleTemplateStore.shared.deleteTemplate(template)
+                // 如果删除的是当前选中的，切换到默认
+                if appState.selectedStyleId == template.id {
+                    appState.selectedStyleId = "default"
+                }
+                templateToDelete = nil
+            }
+        } message: { template in
+            Text("确定要删除「\(template.name)」吗？此操作无法撤销。")
+        }
     }
 
     private func roleDetailCard(template: StyleTemplate, showEdit: Bool = false) -> some View {
@@ -559,16 +576,28 @@ struct MainWindow: View {
 
                 Spacer()
 
-                // 编辑按钮（仅自定义人设）
+                // 编辑和删除按钮（仅自定义人设）
                 if showEdit {
-                    Button {
-                        editingTemplate = template
-                    } label: {
-                        Image(systemName: "pencil.circle")
-                            .font(.system(size: 18))
-                            .foregroundColor(.textTertiary)
+                    HStack(spacing: 8) {
+                        Button {
+                            editingTemplate = template
+                        } label: {
+                            Image(systemName: "pencil.circle")
+                                .font(.system(size: 18))
+                                .foregroundColor(.textTertiary)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            templateToDelete = template
+                            showDeleteConfirm = true
+                        } label: {
+                            Image(systemName: "trash.circle")
+                                .font(.system(size: 18))
+                                .foregroundColor(.red.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                     .padding(.trailing, 8)
                 }
 
